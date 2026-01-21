@@ -588,7 +588,7 @@ public class HtmlDocument
 
     private void RegisterNodeId(HtmlNode node)
     {
-        var id = node.GetAttributeValue("id", null!);
+        var id = node.GetAttributeValue("id", string.Empty);
         if (!string.IsNullOrEmpty(id))
         {
             _nodesById[id] = node;

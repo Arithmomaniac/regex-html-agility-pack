@@ -36,7 +36,7 @@ public class HtmlNodeCollection : IList<HtmlNode>
             int index = GetNodeIndex(node);
             if (index == -1)
                 throw new ArgumentOutOfRangeException(nameof(node), 
-                    $"Node \"{node.CloneNode(false).OuterHtml}\" was not found in the collection");
+                    $"Node \"{node.Name}\" was not found in the collection");
             return index;
         }
     }

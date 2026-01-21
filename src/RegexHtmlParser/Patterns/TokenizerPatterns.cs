@@ -63,7 +63,7 @@ public static class TokenizerPatterns
     /// Pattern to match self-closing tags: &lt;tag /&gt; or &lt;tag/&gt;
     /// </summary>
     public static readonly Regex SelfClosingTagPattern = new(
-        @"<(?<tagName>[a-zA-Z][a-zA-Z0-9]*)\s*(?<attrs>[^>]*?)\s*/>",
+        @"<(?<tagName>[a-zA-Z][a-zA-Z0-9:-]*)\s*(?<attrs>[^>]*?)\s*/>",
         RegexOptions.Compiled,
         RegexTimeout);
 
