@@ -250,6 +250,12 @@ public class HtmlDocument
 
         foreach (Match match in matches)
         {
+            // Skip matches that fall before current position (e.g., content inside raw text elements)
+            if (match.Index < position)
+            {
+                continue;
+            }
+            
             // Update position tracking
             var leadingText = html.Substring(position, match.Index - position);
             UpdateLineInfo(leadingText, ref line, ref linePosition);
@@ -284,9 +290,14 @@ public class HtmlDocument
                 ParseText(match, nodeStack.Peek(), line, linePosition);
             }
 
-            // Update position for the match itself
-            UpdateLineInfo(match.Value, ref line, ref linePosition);
-            position = match.Index + match.Length;
+            // Update position for the match itself, but only if it wasn't already
+            // updated by ParseOpeningTag (for raw text elements like script/style)
+            var matchEndPosition = match.Index + match.Length;
+            if (position < matchEndPosition)
+            {
+                UpdateLineInfo(match.Value, ref line, ref linePosition);
+                position = matchEndPosition;
+            }
         }
 
         // Handle any remaining text
