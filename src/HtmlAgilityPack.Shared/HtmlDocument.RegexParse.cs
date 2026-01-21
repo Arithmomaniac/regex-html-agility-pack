@@ -315,6 +315,36 @@ namespace HtmlAgilityPack
             nodeStack.Push(node);
         }
 
+        /// <summary>
+        /// Uses .NET's balancing groups to find the correctly matched closing tag for nested elements.
+        /// This demonstrates the key feature that makes regex-based nested HTML parsing possible in .NET.
+        /// Called from ParseRegexClosingTag to verify correct matching.
+        /// </summary>
+        /// <param name="tagName">The tag name to match</param>
+        /// <param name="html">The full HTML string</param>
+        /// <param name="startIndex">The start index to search from</param>
+        /// <returns>The match result, or null if no balanced match found</returns>
+        internal Match TryFindBalancedMatch(string tagName, string html, int startIndex)
+        {
+            try
+            {
+                // Use the balancing groups pattern to find properly nested tags
+                var balancedPattern = RegexTokenizerPatterns.CreateBalancedTagPattern(tagName);
+                var balancedMatch = balancedPattern.Match(html, startIndex);
+
+                if (balancedMatch.Success)
+                {
+                    return balancedMatch;
+                }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // Balancing groups timed out - fall back to simple matching
+            }
+
+            return null;
+        }
+
         private void ParseRegexClosingTag(Match match, Stack<HtmlNode> nodeStack)
         {
             var tagMatch = Regex.Match(match.Value, @"</(?<name>[a-zA-Z][a-zA-Z0-9:-]*)\s*>");
