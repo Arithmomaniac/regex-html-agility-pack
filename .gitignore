@@ -4,6 +4,7 @@ Z.Lab/
 [Pp]ackages/
 Z.Expressions.Eval.NET40/
 Z.Lab/
+.nuget/
 *.suo
 *.user
 *.userprefs
