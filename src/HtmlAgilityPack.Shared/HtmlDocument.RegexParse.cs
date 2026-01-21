@@ -370,8 +370,8 @@ namespace HtmlAgilityPack
         {
             var text = match.Value;
 
-            // Skip empty text nodes
-            if (string.IsNullOrWhiteSpace(text))
+            // Don't skip whitespace-only text - it needs to be preserved for OuterHtml
+            if (string.IsNullOrEmpty(text))
                 return;
 
             var node = CreateNode(HtmlNodeType.Text, match.Index);
@@ -424,7 +424,7 @@ namespace HtmlAgilityPack
                 else if (match.Groups["uqValue"].Success)
                 {
                     attr._value = match.Groups["uqValue"].Value;
-                    attr.InternalQuoteType = AttributeValueQuote.WithoutValue;
+                    attr.InternalQuoteType = AttributeValueQuote.None;  // Unquoted value like attr=value
                     attr._valuestartindex = baseIndex + match.Groups["uqValue"].Index;
                     attr._valuelength = attr._value.Length;
                 }
