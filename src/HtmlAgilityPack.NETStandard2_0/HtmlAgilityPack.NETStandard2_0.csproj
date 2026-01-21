@@ -17,7 +17,7 @@
     <Company>ZZZ Projects Inc.</Company>
     <Product>Html Agility Pack</Product>
     <Copyright>Copyright © ZZZ Projects Inc.</Copyright>
-    <SignAssembly>true</SignAssembly>
+    <SignAssembly>false</SignAssembly>
     <AssemblyOriginatorKeyFile>HtmlAgilityPack.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 

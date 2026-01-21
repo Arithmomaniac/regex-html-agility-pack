@@ -57,5 +57,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Trace.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Trace.FullFramework.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utilities.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)RegexTokenizerPatterns.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)HtmlDocument.RegexParse.cs" />
   </ItemGroup>
 </Project>

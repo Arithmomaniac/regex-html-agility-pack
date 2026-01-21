@@ -1345,6 +1345,13 @@ namespace HtmlAgilityPack
 
         private void Parse()
         {
+            // Use regex-based parser if enabled
+            if (UseRegexParser)
+            {
+                ParseWithRegex();
+                return;
+            }
+
             if (ParseExecuting != null)
             {
                 ParseExecuting(this);
