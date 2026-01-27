@@ -9,6 +9,12 @@
 
 This is a **regex-powered HTML parser** that implements the HtmlAgilityPack interface using **.NET's balancing groups** feature. It demonstrates that the "impossible" is possible — with an asterisk.
 
+The project includes **two parser implementations**:
+1. **HybridRegexParser** (Production): Multi-pass parser using regex tokenization + tree building
+2. **PureRegexParser** (Experimental): Single-pass recursive parser with balancing groups
+
+Both parsers pass 100% of tests and can be used interchangeably through a common interface.
+
 ## The Claim vs. Reality
 
 ### The Famous Argument
@@ -54,6 +60,7 @@ Here's a regex that matches balanced `<div>` tags with arbitrary nesting depth:
 
 ## Architecture
 
+### HybridRegexParser (Multi-pass)
 ```
 HTML Input
     │
@@ -80,6 +87,24 @@ HTML Input
 HtmlDocument (HAP-compatible)
 ```
 
+### PureRegexParser (Single-pass)
+```
+HTML Input
+    │
+    ▼
+┌───────────────────────┐
+│  Recursive Descent    │  ← Pure regex matching
+│  - Sequential parsing │  ← With balancing groups
+│  - Void element check │  ← Pattern recognition
+│  - Tree construction │  ← Direct node creation
+└───────────────────────┘
+    │
+    ▼
+HtmlDocument (HAP-compatible)
+```
+
+Both parsers implement the same `IHtmlParser` interface for interchangeable use.
+
 ## What We Built
 
 | Component | Implementation | Purity |
@@ -96,7 +121,7 @@ HtmlDocument (HAP-compatible)
 
 ## Compatibility
 
-Tested against HtmlAgilityPack behavior:
+Tested against HtmlAgilityPack behavior with **both parser implementations**:
 
 ```
 ✅ Simple element
@@ -115,23 +140,56 @@ Tested against HtmlAgilityPack behavior:
 ✅ DOCTYPE handling
 ✅ Textarea raw content
 
-Results: 19/19 tests passing (100% compatibility)
+Results: 
+- HybridRegexParser: 26/26 theory tests (100%)
+- PureRegexParser: 26/26 theory tests (100%)
+- Total: 93 tests, 92 passing (1 pre-existing file path issue)
 ```
 
 ## Usage
 
+### Default (HybridRegexParser)
 ```csharp
 using HtmlAgilityPack;
 
 var doc = new HtmlDocument();
 doc.OptionUseIdAttribute = true;  // Enable GetElementById
 
-// Use the regex parser instead of the state machine
+// Use the regex parser (defaults to HybridRegexParser)
 doc.LoadHtmlWithRegex("<div><div>Nested!</div></div>");
 
 // Same API as always
 var inner = doc.DocumentNode.SelectSingleNode("//div/div");
 Console.WriteLine(inner.InnerText); // "Nested!"
+```
+
+### Explicit Parser Selection
+```csharp
+using HtmlAgilityPack;
+using HtmlAgilityPack.RegexParser;
+
+var doc = new HtmlDocument();
+
+// Use PureRegexParser explicitly
+var parser = new PureRegexParser();
+doc.LoadHtmlWithRegex("<div><br><hr></div>", parser);
+
+// Or use HybridRegexParser explicitly
+var hybridParser = new HybridRegexParser();
+doc.LoadHtmlWithRegex("<div><br><hr></div>", hybridParser);
+```
+
+### In Tests (Theory-based)
+```csharp
+[Theory]
+[InlineData(ParserType.Hybrid)]
+[InlineData(ParserType.Pure)]
+public void Test_Html_Parsing(ParserType parserType)
+{
+    var doc = new HtmlDocument();
+    doc.LoadHtmlWithParser(html, parserType);
+    // Your assertions...
+}
 ```
 
 ## Intellectual Honesty
@@ -150,13 +208,24 @@ This **is** a demonstration that:
 
 ```
 src/HtmlAgilityPack.Net7/RegexParser/
-├── RegexBalancingDemo.cs      # Proof of concept: balancing groups work
+├── IHtmlParser.cs              # Common interface for parsers
+├── HybridRegexParser.cs        # Multi-pass parser (production)
+├── PureRegexParser.cs          # Single-pass parser (experimental)
+├── RegexBalancingDemo.cs       # Proof of concept: balancing groups work
 ├── Token.cs                    # Token types and structures
-├── HtmlPatterns.cs            # 14 [GeneratedRegex] patterns
-├── RegexTokenizer.cs          # HTML → tokens
-├── RegexTreeBuilder.cs        # Tokens → HtmlNode tree
+├── HtmlPatterns.cs             # 14 [GeneratedRegex] patterns
+├── RegexTokenizer.cs           # HTML → tokens (used by HybridRegexParser)
+├── RegexTreeBuilder.cs         # Tokens → HtmlNode tree (used by HybridRegexParser)
 └── HtmlDocumentRegexExtensions.cs  # LoadHtmlWithRegex() extension
+
+src/Tests/
+├── ParserTheoryTests.cs        # 14 test scenarios × 2 parsers
+└── AttributeValueQuoteTheoryTests.cs  # 12 test scenarios × 2 parsers
 ```
+
+### Documentation
+- **PURE_REGEX_PARSER.md** - Detailed architecture and implementation guide
+- **IMPLEMENTATION_SUMMARY.md** - Complete technical overview and test results
 
 ## References
 
