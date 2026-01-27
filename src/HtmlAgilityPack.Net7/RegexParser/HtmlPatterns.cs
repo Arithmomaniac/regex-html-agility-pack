@@ -152,41 +152,22 @@ namespace HtmlAgilityPack.RegexParser
         }
 
         /// <summary>
-        /// Matches HTML5 void elements (self-closing by spec).
-        /// Uses regex alternation instead of HashSet for consistency.
-        /// </summary>
-        [GeneratedRegex(@"^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex VoidElementPattern();
-
-        /// <summary>
-        /// Matches elements whose content is raw text (not parsed as HTML).
-        /// </summary>
-        [GeneratedRegex(@"^(script|style|textarea|title|xmp|plaintext|listing)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex RawTextElementPattern();
-
-        /// <summary>
-        /// Matches HTML5 block elements (for implicit closing of p).
-        /// </summary>
-        [GeneratedRegex(@"^(address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex BlockElementPattern();
-
-        /// <summary>
         /// Check if tag is void element using regex.
         /// </summary>
-        public static bool IsVoidElement(string tagName) => VoidElementPattern().IsMatch(tagName);
+        public static bool IsVoidElement(string tagName) => 
+            ClassifyElement(tagName) == ElementClass.Void;
 
         /// <summary>
         /// Check if tag is raw text element using regex.
         /// </summary>
-        public static bool IsRawTextElement(string tagName) => RawTextElementPattern().IsMatch(tagName);
+        public static bool IsRawTextElement(string tagName) => 
+            ClassifyElement(tagName) == ElementClass.RawText;
 
         /// <summary>
         /// Check if tag is block element using regex.
         /// </summary>
-        public static bool IsBlockElement(string tagName) => BlockElementPattern().IsMatch(tagName);
+        public static bool IsBlockElement(string tagName) => 
+            ClassifyElement(tagName) == ElementClass.Block;
 
         #endregion
 
@@ -250,6 +231,49 @@ namespace HtmlAgilityPack.RegexParser
                 )
                 (?(DEPTH)(?!))                          # FAIL if stack not empty
                 </{escaped}\s*>                         # Final closing tag
+            ";
+            return new Regex(pattern, 
+                RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>
+        /// Creates a pattern that extracts raw text content using balancing groups for quote tracking.
+        /// This handles edge cases where the closing tag pattern appears inside quoted strings.
+        /// 
+        /// Used by RegexTokenizer.ExtractRawTextContent to safely extract script/style content
+        /// even when it contains strings like: var x = '&lt;/script&gt;';
+        /// </summary>
+        /// <param name="tagName">The raw text element tag name (e.g., "script", "style")</param>
+        /// <returns>A regex that extracts content and closing tag, respecting quoted strings</returns>
+        public static Regex CreateRawTextContentPattern(string tagName)
+        {
+            var escaped = Regex.Escape(tagName);
+            
+            // Pattern uses balancing groups to track quote context:
+            // - DQ stack tracks double quotes
+            // - SQ stack tracks single quotes
+            // The closing tag only matches when both stacks are empty (outside quotes)
+            var pattern = $@"
+                (?<content>
+                  (?>
+                    # Double-quoted string - use balancing group to track
+                    ""(?<DQ>)                                           # Start double quote: PUSH
+                    (?:[^""\\]|\\.)*                                    # String content (with escapes)
+                    ""(?<-DQ>)                                          # End double quote: POP
+                    |
+                    # Single-quoted string - use balancing group to track
+                    '(?<SQ>)                                            # Start single quote: PUSH
+                    (?:[^'\\]|\\.)*                                     # String content (with escapes)
+                    '(?<-SQ>)                                           # End single quote: POP
+                    |
+                    # Regular content (not quote, not potential closing tag start)
+                    [^""'<]+                                            # Text without quotes or <
+                    |
+                    # < that's not the start of our closing tag
+                    <(?!/{escaped}\s*>)
+                  )*
+                )
+                (?<closetag></{escaped}\s*>)                            # Closing tag
             ";
             return new Regex(pattern, 
                 RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);

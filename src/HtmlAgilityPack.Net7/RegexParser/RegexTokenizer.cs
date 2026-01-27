@@ -68,81 +68,73 @@ namespace HtmlAgilityPack.RegexParser
 
         /// <summary>
         /// Extracts raw text content and closing tag for script/style/etc.
-        /// Uses a single regex with capturing groups to extract content and closing tag,
-        /// avoiding substring operations.
+        /// Uses balancing groups to properly handle quoted strings that may contain
+        /// fake closing tags (e.g., var x = '&lt;/script&gt;' inside a script tag).
         /// </summary>
         private (Token? ContentToken, Token? CloseToken, int EndPosition) ExtractRawTextContent(
             string html, int startPos, string tagName, LineTracker lineInfo)
         {
-            // Use a single regex with capturing groups to match content + closing tag
-            // Group 1 (content): everything before the closing tag
-            // Group 2 (closetag): the closing tag itself
-            var pattern = new Regex(
-                $@"(?<content>.*?)(?<closetag></{Regex.Escape(tagName)}\s*>)|(?<rest>.+)$",
-                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // Use balancing groups pattern to safely extract content respecting quoted strings
+            var pattern = HtmlPatterns.CreateRawTextContentPattern(tagName);
             var match = pattern.Match(html, startPos);
 
             if (!match.Success)
             {
-                // Empty remaining content - shouldn't typically happen
-                return (null, null, html.Length);
-            }
-
-            // Check if we matched the closing tag pattern or the "rest of document" pattern
-            var closetag = match.Groups["closetag"];
-            if (closetag.Success)
-            {
-                // Found closing tag - extract content and closing tag from capturing groups
-                var contentGroup = match.Groups["content"];
-                Token? contentToken = null;
-                
-                if (contentGroup.Success && contentGroup.Length > 0)
+                // No closing tag found - treat rest of document as raw content
+                // Use simple fallback pattern to get remaining content
+                var remaining = html.Length - startPos;
+                if (remaining > 0)
                 {
                     var (line, col) = lineInfo.GetLineAndColumn(startPos);
-                    contentToken = new Token
+                    var contentToken = new Token
                     {
                         Type = TokenType.Text,
-                        Content = contentGroup.Value,
-                        RawText = contentGroup.Value,
+                        Content = html.Substring(startPos),
+                        RawText = html.Substring(startPos),
                         Position = startPos,
                         Line = line,
                         LinePosition = col,
-                        Length = contentGroup.Length
+                        Length = remaining
                     };
+                    return (contentToken, null, html.Length);
                 }
-
-                var (closeLine, closeCol) = lineInfo.GetLineAndColumn(closetag.Index);
-                var closeToken = new Token
-                {
-                    Type = TokenType.CloseTag,
-                    Name = tagName.ToLowerInvariant(),
-                    OriginalName = tagName, // We don't know original case from the match
-                    RawText = closetag.Value,
-                    Position = closetag.Index,
-                    Line = closeLine,
-                    LinePosition = closeCol,
-                    Length = closetag.Length
-                };
-
-                return (contentToken, closeToken, closetag.Index + closetag.Length);
+                return (null, null, html.Length);
             }
-            else
+
+            // Extract content and closing tag from capturing groups
+            var contentGroup = match.Groups["content"];
+            var closetag = match.Groups["closetag"];
+            
+            Token? content = null;
+            if (contentGroup.Success && contentGroup.Length > 0)
             {
-                // No closing tag - treat rest of document as raw content via the "rest" group
-                var restGroup = match.Groups["rest"];
                 var (line, col) = lineInfo.GetLineAndColumn(startPos);
-                var contentToken = new Token
+                content = new Token
                 {
                     Type = TokenType.Text,
-                    Content = restGroup.Value,
-                    RawText = restGroup.Value,
+                    Content = contentGroup.Value,
+                    RawText = contentGroup.Value,
                     Position = startPos,
                     Line = line,
                     LinePosition = col,
-                    Length = restGroup.Length
+                    Length = contentGroup.Length
                 };
-                return (contentToken, null, html.Length);
             }
+
+            var (closeLine, closeCol) = lineInfo.GetLineAndColumn(closetag.Index);
+            var closeToken = new Token
+            {
+                Type = TokenType.CloseTag,
+                Name = tagName.ToLowerInvariant(),
+                OriginalName = tagName,
+                RawText = closetag.Value,
+                Position = closetag.Index,
+                Line = closeLine,
+                LinePosition = closeCol,
+                Length = closetag.Length
+            };
+
+            return (content, closeToken, closetag.Index + closetag.Length);
         }
 
         /// <summary>

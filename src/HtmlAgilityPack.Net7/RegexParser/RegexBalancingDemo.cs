@@ -217,7 +217,7 @@ namespace HtmlAgilityPack.RegexParser
             return allPassed;
         }
 
-        private static bool RunTest(string testName, string input, bool expectMatch, string expectedContent)
+        private static bool RunTest(string testName, string input, bool expectMatch, string? expectedContent)
         {
             var result = MatchBalancedDiv(input);
             var passed = result.Success == expectMatch;
