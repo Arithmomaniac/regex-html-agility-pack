@@ -1,18 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>HtmlAgilityPack</AssemblyName>
     <RootNamespace>HtmlAgilityPack</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>HtmlAgilityPack</PackageId>
-    <Version>1.12.4</Version>
-    <Authors>ZZZ Projects Inc.</Authors>
-    <Company>ZZZ Projects Inc.</Company>
-    <Product>Html Agility Pack</Product>
-    <Copyright>Copyright © ZZZ Projects Inc.</Copyright>
-    <SignAssembly>True</SignAssembly>
-    <AssemblyOriginatorKeyFile>HtmlAgilityPack.snk</AssemblyOriginatorKeyFile>
+    <Nullable>enable</Nullable>
+    <PackageId>HtmlAgilityPack.Regex</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Regex Parser POC</Authors>
+    <Product>Html Agility Pack - Regex Edition</Product>
+    <Description>Proof of concept: HTML parser using .NET balancing groups</Description>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
   </PropertyGroup>
 
