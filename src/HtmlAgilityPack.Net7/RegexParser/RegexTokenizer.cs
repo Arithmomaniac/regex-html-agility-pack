@@ -303,21 +303,22 @@ namespace HtmlAgilityPack.RegexParser
 
     /// <summary>
     /// Tracks line numbers and column positions for a source string.
+    /// NOW USES REGEX for line detection!
     /// </summary>
     internal class LineTracker
     {
+        private readonly string _source;
         private readonly List<int> _lineStarts;
 
         public LineTracker(string source)
         {
+            _source = source;
             _lineStarts = new List<int> { 0 };
             
-            for (int i = 0; i < source.Length; i++)
+            // Use regex to find all newline positions
+            foreach (var match in HtmlPatterns.NewlinePattern().EnumerateMatches(source))
             {
-                if (source[i] == '\n')
-                {
-                    _lineStarts.Add(i + 1);
-                }
+                _lineStarts.Add(match.Index + 1);
             }
         }
 

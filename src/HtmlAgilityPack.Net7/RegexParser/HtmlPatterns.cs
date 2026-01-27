@@ -31,27 +31,6 @@ namespace HtmlAgilityPack.RegexParser
         [GeneratedRegex(@"<%(?<content>.*?)%>", RegexOptions.Singleline | RegexOptions.Compiled)]
         public static partial Regex ServerSideCode();
 
-        /// <summary>
-        /// Matches script tags with content.
-        /// </summary>
-        [GeneratedRegex(@"<script(?<attrs>[^>]*)>(?<content>.*?)</script\s*>", 
-            RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex ScriptTag();
-
-        /// <summary>
-        /// Matches style tags with content.
-        /// </summary>
-        [GeneratedRegex(@"<style(?<attrs>[^>]*)>(?<content>.*?)</style\s*>",
-            RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex StyleTag();
-
-        /// <summary>
-        /// Matches textarea tags with content.
-        /// </summary>
-        [GeneratedRegex(@"<textarea(?<attrs>[^>]*)>(?<content>.*?)</textarea\s*>",
-            RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex TextAreaTag();
-
         #endregion
 
         #region Master Tokenizer (Source Generated)
@@ -231,34 +210,10 @@ namespace HtmlAgilityPack.RegexParser
         #region Line Counting (Regex-based!)
 
         /// <summary>
-        /// Pattern for counting newlines.
+        /// Pattern for finding newlines. Used by LineTracker.
         /// </summary>
         [GeneratedRegex(@"\n", RegexOptions.Compiled)]
         public static partial Regex NewlinePattern();
-
-        /// <summary>
-        /// Count lines up to a position using regex.
-        /// </summary>
-        public static int CountLinesUpTo(string text, int position)
-        {
-            if (position <= 0) return 1;
-            var substring = text.AsSpan(0, Math.Min(position, text.Length));
-            return NewlinePattern().Count(substring) + 1;
-        }
-
-        /// <summary>
-        /// Find column position (chars since last newline) using regex.
-        /// </summary>
-        [GeneratedRegex(@"[^\n]*$", RegexOptions.Compiled)]
-        private static partial Regex LastLinePattern();
-
-        public static int GetColumnPosition(string text, int position)
-        {
-            if (position <= 0) return 1;
-            var substring = text.Substring(0, Math.Min(position, text.Length));
-            var match = LastLinePattern().Match(substring);
-            return match.Success ? match.Length + 1 : 1;
-        }
 
         #endregion
     }
