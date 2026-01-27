@@ -222,8 +222,8 @@ namespace HtmlAgilityPack.Tests.Net8
     }
 
     /// <summary>
-    /// Tests for implicit closing rules - expected to pass with MultiPass,
-    /// may fail with Pure Regex.
+    /// Tests for implicit closing rules - now both parsers should pass!
+    /// The PureRegexParser uses regex with lookahead patterns to handle implicit closing.
     /// </summary>
     public class ImplicitClosingTests
     {
@@ -236,8 +236,8 @@ namespace HtmlAgilityPack.Tests.Net8
         }
 
         [Theory]
-        [MemberData(nameof(ParserTestData.MultiPassParser), MemberType = typeof(ParserTestData))]
-        public void ImplicitPClosing_MultiPassOnly(IHtmlParser parser)
+        [MemberData(nameof(ParserTestData.AllParsers), MemberType = typeof(ParserTestData))]
+        public void ImplicitPClosing_BothParsers(IHtmlParser parser)
         {
             // <p> tags close implicitly when another <p> is encountered
             var doc = ParseWith(parser, "<p>A<p>B<p>C");
@@ -247,8 +247,8 @@ namespace HtmlAgilityPack.Tests.Net8
         }
 
         [Theory]
-        [MemberData(nameof(ParserTestData.MultiPassParser), MemberType = typeof(ParserTestData))]
-        public void ImplicitLiClosing_MultiPassOnly(IHtmlParser parser)
+        [MemberData(nameof(ParserTestData.AllParsers), MemberType = typeof(ParserTestData))]
+        public void ImplicitLiClosing_BothParsers(IHtmlParser parser)
         {
             // <li> tags close implicitly when another <li> is encountered
             var doc = ParseWith(parser, "<ul><li>A<li>B<li>C</ul>");
@@ -258,8 +258,8 @@ namespace HtmlAgilityPack.Tests.Net8
         }
 
         [Theory]
-        [MemberData(nameof(ParserTestData.MultiPassParser), MemberType = typeof(ParserTestData))]
-        public void ImplicitDtDdClosing_MultiPassOnly(IHtmlParser parser)
+        [MemberData(nameof(ParserTestData.AllParsers), MemberType = typeof(ParserTestData))]
+        public void ImplicitDtDdClosing_BothParsers(IHtmlParser parser)
         {
             var doc = ParseWith(parser, "<dl><dt>Term<dd>Definition<dt>Term2<dd>Definition2</dl>");
             var dtTags = doc.DocumentNode.SelectNodes("//dt");
@@ -272,7 +272,8 @@ namespace HtmlAgilityPack.Tests.Net8
     }
 
     /// <summary>
-    /// Tests for raw text elements (script, style, textarea).
+    /// Tests for raw text elements (script, style, textarea) - now both parsers should pass!
+    /// The PureRegexParser uses special regex patterns to capture raw content without parsing.
     /// </summary>
     public class RawTextElementTests
     {
@@ -284,7 +285,7 @@ namespace HtmlAgilityPack.Tests.Net8
         }
 
         [Theory]
-        [MemberData(nameof(ParserTestData.MultiPassParser), MemberType = typeof(ParserTestData))]
+        [MemberData(nameof(ParserTestData.AllParsers), MemberType = typeof(ParserTestData))]
         public void ScriptContent_NotParsedAsHtml(IHtmlParser parser)
         {
             // Script content should not be parsed - <div> inside script is not a real element
@@ -295,7 +296,7 @@ namespace HtmlAgilityPack.Tests.Net8
         }
 
         [Theory]
-        [MemberData(nameof(ParserTestData.MultiPassParser), MemberType = typeof(ParserTestData))]
+        [MemberData(nameof(ParserTestData.AllParsers), MemberType = typeof(ParserTestData))]
         public void TextareaContent_Preserved(IHtmlParser parser)
         {
             var doc = ParseWith(parser, "<textarea><div>Not a tag</div></textarea>");
