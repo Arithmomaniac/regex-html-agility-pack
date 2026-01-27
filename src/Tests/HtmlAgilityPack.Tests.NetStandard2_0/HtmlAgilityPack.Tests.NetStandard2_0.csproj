@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
 
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\HtmlAgilityPack.NetStandard2_0\HtmlAgilityPack.NetStandard2_0.csproj" />
+    <ProjectReference Include="..\..\HtmlAgilityPack.Net7\HtmlAgilityPack.Net7.csproj" />
   </ItemGroup>
 
 </Project>
