@@ -332,23 +332,21 @@ namespace HtmlAgilityPack
 
         /// <summary>
         /// Checks if the current tag should implicitly close parent tags.
-        /// Implements HTML5 implicit closing rules.
+        /// NOW USES REGEX for HTML5 implicit closing rules!
         /// </summary>
         private void CheckImplicitClose(string newTagName)
         {
-            // HTML5 implicit closing rules
-            // e.g., <p> closes when another block element starts
-            // <li> closes when another <li> or </ul> is encountered
-
             var current = _nodeStack.Count > 1 ? _nodeStack.Peek() : null;
             if (current == null || current.NodeType != HtmlNodeType.Element)
                 return;
 
-            var currentName = current.Name?.ToLowerInvariant();
-            var newName = newTagName.ToLowerInvariant();
+            var currentName = current.Name;
+            if (string.IsNullOrEmpty(currentName))
+                return;
 
-            // P is closed by block elements
-            if (currentName == "p" && IsBlockElement(newName))
+            // Use regex pattern to check if implicit close is needed
+            // Pattern matches "currentTag:newTag" combinations that trigger close
+            if (HtmlPatterns.ShouldImplicitlyClose(currentName, newTagName))
             {
                 _nodeStack.Pop();
                 current._endnode = current; // Self-close
@@ -358,65 +356,18 @@ namespace HtmlAgilityPack
                 return;
             }
 
-            // LI is closed by another LI
-            if (currentName == "li" && newName == "li")
+            // Special case: P is closed by any block element (handled by regex pattern)
+            // but also add explicit check for block elements not in the implicit pattern
+            if (currentName.Equals("p", StringComparison.OrdinalIgnoreCase) && 
+                HtmlPatterns.IsBlockElement(newTagName))
             {
                 _nodeStack.Pop();
                 current._endnode = current;
                 _currentNode = _nodeStack.Peek();
-                return;
-            }
-
-            // DD/DT are closed by another DD/DT
-            if ((currentName == "dd" || currentName == "dt") && (newName == "dd" || newName == "dt"))
-            {
-                _nodeStack.Pop();
-                current._endnode = current;
-                _currentNode = _nodeStack.Peek();
-                return;
-            }
-
-            // TD/TH are closed by another TD/TH/TR
-            if ((currentName == "td" || currentName == "th") && 
-                (newName == "td" || newName == "th" || newName == "tr"))
-            {
-                _nodeStack.Pop();
-                current._endnode = current;
-                _currentNode = _nodeStack.Peek();
-                return;
-            }
-
-            // TR is closed by another TR
-            if (currentName == "tr" && newName == "tr")
-            {
-                _nodeStack.Pop();
-                current._endnode = current;
-                _currentNode = _nodeStack.Peek();
-                return;
-            }
-
-            // OPTION is closed by another OPTION
-            if (currentName == "option" && newName == "option")
-            {
-                _nodeStack.Pop();
-                current._endnode = current;
-                _currentNode = _nodeStack.Peek();
-                return;
+                CheckImplicitClose(newTagName);
             }
         }
 
-        private static bool IsBlockElement(string tagName)
-        {
-            return tagName switch
-            {
-                "address" or "article" or "aside" or "blockquote" or "canvas" or
-                "dd" or "div" or "dl" or "dt" or "fieldset" or "figcaption" or
-                "figure" or "footer" or "form" or "h1" or "h2" or "h3" or "h4" or
-                "h5" or "h6" or "header" or "hgroup" or "hr" or "li" or "main" or
-                "nav" or "noscript" or "ol" or "p" or "pre" or "section" or
-                "table" or "tfoot" or "ul" or "video" => true,
-                _ => false
-            };
-        }
+        // IsBlockElement now uses regex - see HtmlPatterns.IsBlockElement()
     }
 }

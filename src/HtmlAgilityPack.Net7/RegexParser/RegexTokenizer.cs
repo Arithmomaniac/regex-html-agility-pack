@@ -28,8 +28,8 @@ namespace HtmlAgilityPack.RegexParser
 
             while (currentPos < html.Length)
             {
-                // Try to match at current position
-                var match = HtmlPatterns.MasterTokenizer.Match(html, currentPos);
+                // Try to match at current position using source-generated regex
+                var match = HtmlPatterns.MasterTokenizer().Match(html, currentPos);
                 
                 if (!match.Success || match.Index > currentPos)
                 {
@@ -158,7 +158,7 @@ namespace HtmlAgilityPack.RegexParser
             if (string.IsNullOrWhiteSpace(attributeString))
                 return attributes;
 
-            var matches = HtmlPatterns.AttributeParser.Matches(attributeString);
+            var matches = HtmlPatterns.AttributeParser().Matches(attributeString);
 
             foreach (Match match in matches)
             {
@@ -233,8 +233,8 @@ namespace HtmlAgilityPack.RegexParser
             else if (match.Groups["comment"].Success)
             {
                 token.Type = TokenType.Comment;
-                // Extract just the comment content (without <!-- -->)
-                var commentMatch = HtmlPatterns.Comment.Match(match.Value);
+                // Extract just the comment content (without <!-- -->) using source-gen regex
+                var commentMatch = HtmlPatterns.Comment().Match(match.Value);
                 token.Content = commentMatch.Success 
                     ? commentMatch.Groups["content"].Value 
                     : match.Value;
@@ -242,7 +242,7 @@ namespace HtmlAgilityPack.RegexParser
             else if (match.Groups["cdata"].Success)
             {
                 token.Type = TokenType.CData;
-                var cdataMatch = HtmlPatterns.CData.Match(match.Value);
+                var cdataMatch = HtmlPatterns.CData().Match(match.Value);
                 token.Content = cdataMatch.Success
                     ? cdataMatch.Groups["content"].Value
                     : match.Value;
@@ -250,7 +250,7 @@ namespace HtmlAgilityPack.RegexParser
             else if (match.Groups["servercode"].Success)
             {
                 token.Type = TokenType.ServerSideCode;
-                var serverMatch = HtmlPatterns.ServerSideCode.Match(match.Value);
+                var serverMatch = HtmlPatterns.ServerSideCode().Match(match.Value);
                 token.Content = serverMatch.Success
                     ? serverMatch.Groups["content"].Value
                     : match.Value;

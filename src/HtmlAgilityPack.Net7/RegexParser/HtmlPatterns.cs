@@ -4,100 +4,63 @@ namespace HtmlAgilityPack.RegexParser
 {
     /// <summary>
     /// All regex patterns used for HTML parsing.
-    /// Patterns are compiled for performance.
+    /// Uses .NET 7+ source generators for compile-time pattern generation.
     /// 
     /// This is where the regex magic happens. Each pattern is documented with
     /// what it matches and any .NET-specific features it uses.
     /// </summary>
-    public static class HtmlPatterns
+    public static partial class HtmlPatterns
     {
-        private const RegexOptions DefaultOptions = 
-            RegexOptions.Compiled | 
-            RegexOptions.IgnoreCase | 
-            RegexOptions.CultureInvariant;
-
-        private const RegexOptions MultilineOptions = 
-            DefaultOptions | 
-            RegexOptions.Singleline;  // . matches newlines
-
-        private const RegexOptions VerboseOptions = 
-            DefaultOptions | 
-            RegexOptions.IgnorePatternWhitespace;
-
-        #region Pass 1: Pre-extraction patterns (comments, CDATA, script/style)
+        #region Source-Generated Patterns (Compile-time validated!)
 
         /// <summary>
         /// Matches HTML comments: &lt;!-- ... --&gt;
-        /// Group "content" captures the comment body.
         /// </summary>
-        public static readonly Regex Comment = new Regex(
-            @"<!--(?<content>.*?)-->",
-            MultilineOptions);
+        [GeneratedRegex(@"<!--(?<content>.*?)-->", RegexOptions.Singleline | RegexOptions.Compiled)]
+        public static partial Regex Comment();
 
         /// <summary>
         /// Matches CDATA sections: &lt;![CDATA[ ... ]]&gt;
-        /// Group "content" captures the CDATA body.
         /// </summary>
-        public static readonly Regex CData = new Regex(
-            @"<!\[CDATA\[(?<content>.*?)\]\]>",
-            MultilineOptions);
+        [GeneratedRegex(@"<!\[CDATA\[(?<content>.*?)\]\]>", RegexOptions.Singleline | RegexOptions.Compiled)]
+        public static partial Regex CData();
 
         /// <summary>
-        /// Matches server-side code blocks: &lt;% ... %&gt; or &lt;%= ... %&gt;
-        /// Group "content" captures the code.
+        /// Matches server-side code blocks: &lt;% ... %&gt;
         /// </summary>
-        public static readonly Regex ServerSideCode = new Regex(
-            @"<%(?<content>.*?)%>",
-            MultilineOptions);
+        [GeneratedRegex(@"<%(?<content>.*?)%>", RegexOptions.Singleline | RegexOptions.Compiled)]
+        public static partial Regex ServerSideCode();
 
         /// <summary>
-        /// Matches script tags with their content.
-        /// Uses balancing groups? No - script content is not recursive.
-        /// Just captures everything until &lt;/script&gt;.
-        /// Groups: "attrs" for attributes, "content" for script body.
+        /// Matches script tags with content.
         /// </summary>
-        public static readonly Regex ScriptTag = new Regex(
-            @"<script(?<attrs>[^>]*)>(?<content>.*?)</script\s*>",
-            MultilineOptions);
+        [GeneratedRegex(@"<script(?<attrs>[^>]*)>(?<content>.*?)</script\s*>", 
+            RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex ScriptTag();
 
         /// <summary>
-        /// Matches style tags with their content.
-        /// Groups: "attrs" for attributes, "content" for style body.
+        /// Matches style tags with content.
         /// </summary>
-        public static readonly Regex StyleTag = new Regex(
-            @"<style(?<attrs>[^>]*)>(?<content>.*?)</style\s*>",
-            MultilineOptions);
+        [GeneratedRegex(@"<style(?<attrs>[^>]*)>(?<content>.*?)</style\s*>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex StyleTag();
 
         /// <summary>
-        /// Matches textarea tags with their content (content is raw text).
-        /// Groups: "attrs" for attributes, "content" for textarea body.
+        /// Matches textarea tags with content.
         /// </summary>
-        public static readonly Regex TextAreaTag = new Regex(
-            @"<textarea(?<attrs>[^>]*)>(?<content>.*?)</textarea\s*>",
-            MultilineOptions);
+        [GeneratedRegex(@"<textarea(?<attrs>[^>]*)>(?<content>.*?)</textarea\s*>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex TextAreaTag();
 
         #endregion
 
-        #region Pass 2: Master tokenizer
+        #region Master Tokenizer (Source Generated)
 
         /// <summary>
-        /// Master tokenizer pattern - breaks HTML into tokens.
-        /// This is a large alternation that matches different HTML constructs.
-        /// 
-        /// Order matters! More specific patterns must come before general ones.
-        /// 
-        /// Groups:
-        /// - doctype: DOCTYPE declaration
-        /// - comment: HTML comment
-        /// - cdata: CDATA section
-        /// - servercode: Server-side code
-        /// - selfclose, scname, scattrs: Self-closing tag
-        /// - opentag, otname, otattrs: Opening tag
-        /// - closetag, ctname: Closing tag
-        /// - text: Text content
+        /// Master tokenizer - breaks HTML into tokens.
+        /// Uses NonBacktracking for safety against ReDoS.
         /// </summary>
-        public static readonly Regex MasterTokenizer = new Regex(
-            @"
+        [GeneratedRegex(@"
             (?<doctype><!DOCTYPE[^>]*>)                           # DOCTYPE
             |
             (?<comment><!--.*?-->)                                # Comment
@@ -129,28 +92,17 @@ namespace HtmlAgilityPack.RegexParser
             |
             (?<text>[^<]+)                                        # Text content
             ",
-            VerboseOptions | RegexOptions.Singleline);
+            RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled)]
+        public static partial Regex MasterTokenizer();
 
         #endregion
 
-        #region Pass 3: Attribute parser
+        #region Attribute Parser (Source Generated)
 
         /// <summary>
         /// Parses attributes from a tag's attribute string.
-        /// Handles:
-        /// - name="value" (double-quoted)
-        /// - name='value' (single-quoted)  
-        /// - name=value (unquoted)
-        /// - name (boolean/empty attribute)
-        /// 
-        /// Groups:
-        /// - name: Attribute name
-        /// - dqval: Double-quoted value
-        /// - sqval: Single-quoted value
-        /// - uqval: Unquoted value
         /// </summary>
-        public static readonly Regex AttributeParser = new Regex(
-            @"
+        [GeneratedRegex(@"
             (?<name>[^\s=/>""']+)                   # Attribute name
             (?:
                 \s*=\s*                             # = with optional whitespace
@@ -163,11 +115,87 @@ namespace HtmlAgilityPack.RegexParser
                 )
             )?                                      # Value is optional (boolean attrs)
             ",
-            VerboseOptions);
+            RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled)]
+        public static partial Regex AttributeParser();
 
         #endregion
 
-        #region Pass 4: Balancing group patterns for nested content
+        #region Element Classification (REGEX instead of HashSets!)
+
+        /// <summary>
+        /// Matches HTML5 void elements (self-closing by spec).
+        /// Uses regex alternation instead of HashSet for consistency.
+        /// </summary>
+        [GeneratedRegex(@"^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex VoidElementPattern();
+
+        /// <summary>
+        /// Matches elements whose content is raw text (not parsed as HTML).
+        /// </summary>
+        [GeneratedRegex(@"^(script|style|textarea|title|xmp|plaintext|listing)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex RawTextElementPattern();
+
+        /// <summary>
+        /// Matches HTML5 block elements (for implicit closing of p).
+        /// </summary>
+        [GeneratedRegex(@"^(address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex BlockElementPattern();
+
+        /// <summary>
+        /// Check if tag is void element using regex.
+        /// </summary>
+        public static bool IsVoidElement(string tagName) => VoidElementPattern().IsMatch(tagName);
+
+        /// <summary>
+        /// Check if tag is raw text element using regex.
+        /// </summary>
+        public static bool IsRawTextElement(string tagName) => RawTextElementPattern().IsMatch(tagName);
+
+        /// <summary>
+        /// Check if tag is block element using regex.
+        /// </summary>
+        public static bool IsBlockElement(string tagName) => BlockElementPattern().IsMatch(tagName);
+
+        #endregion
+
+        #region Implicit Closing Rules (REGEX for HTML5 spec!)
+
+        /// <summary>
+        /// Pattern to detect implicit closing scenarios.
+        /// Format: "currentTag:newTag" - if matches, currentTag should close.
+        /// </summary>
+        [GeneratedRegex(@"^(
+            p:(address|article|aside|blockquote|div|dl|fieldset|footer|form|h[1-6]|header|hgroup|hr|main|nav|ol|p|pre|section|table|ul)|
+            li:li|
+            dt:(dt|dd)|
+            dd:(dt|dd)|
+            td:(td|th|tr)|
+            th:(td|th|tr)|
+            tr:tr|
+            option:option|
+            optgroup:optgroup|
+            rb:(rb|rt|rtc|rp)|
+            rt:(rb|rt|rtc|rp)|
+            rtc:(rb|rtc|rp)|
+            rp:(rb|rt|rtc|rp)
+        )$", RegexOptions.IgnorePatternWhitespace | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex ImplicitClosePattern();
+
+        /// <summary>
+        /// Check if newTag should implicitly close currentTag.
+        /// Uses regex instead of a maze of if-statements!
+        /// </summary>
+        public static bool ShouldImplicitlyClose(string currentTag, string newTag)
+        {
+            return ImplicitClosePattern().IsMatch($"{currentTag}:{newTag}");
+        }
+
+        #endregion
+
+        #region Balancing Groups Pattern Factory
 
         /// <summary>
         /// Creates a pattern that matches a balanced tag with its content.
@@ -194,48 +222,42 @@ namespace HtmlAgilityPack.RegexParser
                 (?(DEPTH)(?!))                          # FAIL if stack not empty
                 </{escaped}\s*>                         # Final closing tag
             ";
-            return new Regex(pattern, VerboseOptions | RegexOptions.Singleline);
+            return new Regex(pattern, 
+                RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
         }
 
         #endregion
 
-        #region HTML5 void elements (self-closing by spec)
+        #region Line Counting (Regex-based!)
 
         /// <summary>
-        /// HTML5 void elements - these have no closing tag.
+        /// Pattern for counting newlines.
         /// </summary>
-        public static readonly HashSet<string> VoidElements = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase)
-        {
-            "area", "base", "br", "col", "embed", "hr", "img", "input",
-            "link", "meta", "param", "source", "track", "wbr",
-            // Obsolete but still void
-            "basefont", "bgsound", "frame", "isindex", "keygen"
-        };
+        [GeneratedRegex(@"\n", RegexOptions.Compiled)]
+        public static partial Regex NewlinePattern();
 
         /// <summary>
-        /// Elements whose content is raw text (not parsed as HTML).
+        /// Count lines up to a position using regex.
         /// </summary>
-        public static readonly HashSet<string> RawTextElements = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase)
+        public static int CountLinesUpTo(string text, int position)
         {
-            "script", "style", "textarea", "title", "xmp", "plaintext", "listing"
-        };
-
-        /// <summary>
-        /// Checks if a tag name is a void element.
-        /// </summary>
-        public static bool IsVoidElement(string tagName)
-        {
-            return VoidElements.Contains(tagName);
+            if (position <= 0) return 1;
+            var substring = text.AsSpan(0, Math.Min(position, text.Length));
+            return NewlinePattern().Count(substring) + 1;
         }
 
         /// <summary>
-        /// Checks if a tag name is a raw text element.
+        /// Find column position (chars since last newline) using regex.
         /// </summary>
-        public static bool IsRawTextElement(string tagName)
+        [GeneratedRegex(@"[^\n]*$", RegexOptions.Compiled)]
+        private static partial Regex LastLinePattern();
+
+        public static int GetColumnPosition(string text, int position)
         {
-            return RawTextElements.Contains(tagName);
+            if (position <= 0) return 1;
+            var substring = text.Substring(0, Math.Min(position, text.Length));
+            var match = LastLinePattern().Match(substring);
+            return match.Success ? match.Length + 1 : 1;
         }
 
         #endregion
