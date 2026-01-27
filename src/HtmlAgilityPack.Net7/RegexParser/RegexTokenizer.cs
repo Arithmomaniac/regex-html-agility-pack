@@ -68,64 +68,80 @@ namespace HtmlAgilityPack.RegexParser
 
         /// <summary>
         /// Extracts raw text content and closing tag for script/style/etc.
+        /// Uses a single regex with capturing groups to extract content and closing tag,
+        /// avoiding substring operations.
         /// </summary>
         private (Token? ContentToken, Token? CloseToken, int EndPosition) ExtractRawTextContent(
             string html, int startPos, string tagName, LineTracker lineInfo)
         {
-            // Find the closing tag (case-insensitive)
-            var closePattern = new Regex($@"</{Regex.Escape(tagName)}\s*>", RegexOptions.IgnoreCase);
-            var closeMatch = closePattern.Match(html, startPos);
+            // Use a single regex with capturing groups to match content + closing tag
+            // Group 1 (content): everything before the closing tag
+            // Group 2 (closetag): the closing tag itself
+            var pattern = new Regex(
+                $@"(?<content>.*?)(?<closetag></{Regex.Escape(tagName)}\s*>)|(?<rest>.+)$",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            var match = pattern.Match(html, startPos);
 
-            if (!closeMatch.Success)
+            if (!match.Success)
             {
-                // No closing tag - treat rest of document as raw content
-                var content = html.Substring(startPos);
-                var (line, col) = lineInfo.GetLineAndColumn(startPos);
-                var contentToken = new Token
-                {
-                    Type = TokenType.Text,
-                    Content = content,
-                    RawText = content,
-                    Position = startPos,
-                    Line = line,
-                    LinePosition = col,
-                    Length = content.Length
-                };
-                return (contentToken, null, html.Length);
+                // Empty remaining content - shouldn't typically happen
+                return (null, null, html.Length);
             }
-            else
+
+            // Check if we matched the closing tag pattern or the "rest of document" pattern
+            var closetag = match.Groups["closetag"];
+            if (closetag.Success)
             {
+                // Found closing tag - extract content and closing tag from capturing groups
+                var contentGroup = match.Groups["content"];
                 Token? contentToken = null;
-                if (closeMatch.Index > startPos)
+                
+                if (contentGroup.Success && contentGroup.Length > 0)
                 {
-                    var content = html.Substring(startPos, closeMatch.Index - startPos);
                     var (line, col) = lineInfo.GetLineAndColumn(startPos);
                     contentToken = new Token
                     {
                         Type = TokenType.Text,
-                        Content = content,
-                        RawText = content,
+                        Content = contentGroup.Value,
+                        RawText = contentGroup.Value,
                         Position = startPos,
                         Line = line,
                         LinePosition = col,
-                        Length = content.Length
+                        Length = contentGroup.Length
                     };
                 }
 
-                var (closeLine, closeCol) = lineInfo.GetLineAndColumn(closeMatch.Index);
+                var (closeLine, closeCol) = lineInfo.GetLineAndColumn(closetag.Index);
                 var closeToken = new Token
                 {
                     Type = TokenType.CloseTag,
                     Name = tagName.ToLowerInvariant(),
-                    OriginalName = tagName, // We don't know original case
-                    RawText = closeMatch.Value,
-                    Position = closeMatch.Index,
+                    OriginalName = tagName, // We don't know original case from the match
+                    RawText = closetag.Value,
+                    Position = closetag.Index,
                     Line = closeLine,
                     LinePosition = closeCol,
-                    Length = closeMatch.Length
+                    Length = closetag.Length
                 };
 
-                return (contentToken, closeToken, closeMatch.Index + closeMatch.Length);
+                return (contentToken, closeToken, closetag.Index + closetag.Length);
+            }
+            else
+            {
+                // No closing tag - treat rest of document as raw content via the "rest" group
+                var restGroup = match.Groups["rest"];
+                var (line, col) = lineInfo.GetLineAndColumn(startPos);
+                var contentToken = new Token
+                {
+                    Type = TokenType.Text,
+                    Content = restGroup.Value,
+                    RawText = restGroup.Value,
+                    Position = startPos,
+                    Line = line,
+                    LinePosition = col,
+                    Length = restGroup.Length
+                };
+                return (contentToken, null, html.Length);
             }
         }
 
@@ -233,27 +249,23 @@ namespace HtmlAgilityPack.RegexParser
             else if (match.Groups["comment"].Success)
             {
                 token.Type = TokenType.Comment;
-                // Extract just the comment content (without <!-- -->) using source-gen regex
-                var commentMatch = HtmlPatterns.Comment().Match(match.Value);
-                token.Content = commentMatch.Success 
-                    ? commentMatch.Groups["content"].Value 
-                    : match.Value;
+                // Extract content directly from nested capturing group - no re-parsing needed!
+                var contentGroup = match.Groups["commentcontent"];
+                token.Content = contentGroup.Success ? contentGroup.Value : match.Value;
             }
             else if (match.Groups["cdata"].Success)
             {
                 token.Type = TokenType.CData;
-                var cdataMatch = HtmlPatterns.CData().Match(match.Value);
-                token.Content = cdataMatch.Success
-                    ? cdataMatch.Groups["content"].Value
-                    : match.Value;
+                // Extract content directly from nested capturing group - no re-parsing needed!
+                var contentGroup = match.Groups["cdatacontent"];
+                token.Content = contentGroup.Success ? contentGroup.Value : match.Value;
             }
             else if (match.Groups["servercode"].Success)
             {
                 token.Type = TokenType.ServerSideCode;
-                var serverMatch = HtmlPatterns.ServerSideCode().Match(match.Value);
-                token.Content = serverMatch.Success
-                    ? serverMatch.Groups["content"].Value
-                    : match.Value;
+                // Extract content directly from nested capturing group - no re-parsing needed!
+                var contentGroup = match.Groups["servercodecontent"];
+                token.Content = contentGroup.Success ? contentGroup.Value : match.Value;
             }
             else if (match.Groups["selfclose"].Success)
             {

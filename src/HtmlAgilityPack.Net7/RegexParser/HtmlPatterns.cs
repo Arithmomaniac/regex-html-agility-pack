@@ -38,15 +38,16 @@ namespace HtmlAgilityPack.RegexParser
         /// <summary>
         /// Master tokenizer - breaks HTML into tokens.
         /// Uses NonBacktracking for safety against ReDoS.
+        /// Uses nested capturing groups to extract content directly, avoiding double-parsing.
         /// </summary>
         [GeneratedRegex(@"
             (?<doctype><!DOCTYPE[^>]*>)                           # DOCTYPE
             |
-            (?<comment><!--.*?-->)                                # Comment
+            (?<comment><!--(?<commentcontent>.*?)-->)             # Comment with nested content capture
             |
-            (?<cdata><!\[CDATA\[.*?\]\]>)                         # CDATA
+            (?<cdata><!\[CDATA\[(?<cdatacontent>.*?)\]\]>)        # CDATA with nested content capture
             |
-            (?<servercode><%.*?%>)                                # Server-side code
+            (?<servercode><%(?<servercodecontent>.*?)%>)          # Server-side code with nested content capture
             |
             (?<selfclose>
                 <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)                 # Tag name
@@ -100,6 +101,55 @@ namespace HtmlAgilityPack.RegexParser
         #endregion
 
         #region Element Classification (REGEX instead of HashSets!)
+
+        /// <summary>
+        /// Combined element classifier using nested capturing groups.
+        /// Classifies an element as void, raw text, or block in a single regex match.
+        /// Group structure:
+        /// - "void": matches void elements
+        /// - "rawtext": matches raw text elements  
+        /// - "block": matches block elements
+        /// </summary>
+        [GeneratedRegex(@"^(?:
+            (?<void>area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)
+            |
+            (?<rawtext>script|style|textarea|title|xmp|plaintext|listing)
+            |
+            (?<block>address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)
+        )$",
+            RegexOptions.IgnorePatternWhitespace | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex ElementClassifier();
+
+        /// <summary>
+        /// Classification result for an element.
+        /// </summary>
+        public enum ElementClass
+        {
+            /// <summary>Not a special element type.</summary>
+            None,
+            /// <summary>Void element (self-closing by spec).</summary>
+            Void,
+            /// <summary>Raw text element (content not parsed as HTML).</summary>
+            RawText,
+            /// <summary>Block element (for implicit closing of p).</summary>
+            Block
+        }
+
+        /// <summary>
+        /// Classifies an element using a single regex match with nested capturing groups.
+        /// More efficient than calling three separate IsXxx methods.
+        /// </summary>
+        public static ElementClass ClassifyElement(string tagName)
+        {
+            var match = ElementClassifier().Match(tagName);
+            if (!match.Success) return ElementClass.None;
+            
+            if (match.Groups["void"].Success) return ElementClass.Void;
+            if (match.Groups["rawtext"].Success) return ElementClass.RawText;
+            if (match.Groups["block"].Success) return ElementClass.Block;
+            
+            return ElementClass.None;
+        }
 
         /// <summary>
         /// Matches HTML5 void elements (self-closing by spec).
