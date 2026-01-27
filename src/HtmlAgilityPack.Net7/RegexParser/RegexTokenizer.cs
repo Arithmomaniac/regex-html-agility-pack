@@ -81,16 +81,16 @@ namespace HtmlAgilityPack.RegexParser
             if (!match.Success)
             {
                 // No closing tag found - treat rest of document as raw content
-                // Use simple fallback pattern to get remaining content
                 var remaining = html.Length - startPos;
                 if (remaining > 0)
                 {
                     var (line, col) = lineInfo.GetLineAndColumn(startPos);
+                    var remainingContent = html[startPos..];  // Use range syntax instead of Substring
                     var contentToken = new Token
                     {
                         Type = TokenType.Text,
-                        Content = html.Substring(startPos),
-                        RawText = html.Substring(startPos),
+                        Content = remainingContent,
+                        RawText = remainingContent,
                         Position = startPos,
                         Line = line,
                         LinePosition = col,

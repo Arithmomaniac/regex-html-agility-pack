@@ -273,7 +273,9 @@ namespace HtmlAgilityPack.RegexParser
                     <(?!/{escaped}\s*>)
                   )*
                 )
-                (?<closetag></{escaped}\s*>)                            # Closing tag
+                (?(DQ)(?!))                                             # FAIL if DQ stack not empty
+                (?(SQ)(?!))                                             # FAIL if SQ stack not empty
+                (?<closetag></{escaped}\s*>)                            # Closing tag (only when outside quotes)
             ";
             return new Regex(pattern, 
                 RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
