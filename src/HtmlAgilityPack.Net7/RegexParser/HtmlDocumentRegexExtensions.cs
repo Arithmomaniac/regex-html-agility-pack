@@ -7,65 +7,56 @@ namespace HtmlAgilityPack
     /// </summary>
     public static class HtmlDocumentRegexExtensions
     {
+        // Default parser instance (multi-pass for better compatibility)
+        private static readonly IHtmlParser DefaultParser = new MultiPassRegexParser();
+        
+        // Pure regex parser instance (single-pass using balancing groups)
+        private static readonly IHtmlParser PureParser = new PureRegexParser();
+
         /// <summary>
-        /// Loads HTML using the regex-based parser instead of the state machine parser.
-        /// This is the "impossible" parser that uses .NET balancing groups.
+        /// Loads HTML using the multi-pass regex parser (default).
+        /// This parser uses RegexTokenizer + RegexTreeBuilder and handles
+        /// edge cases like implicit closing and malformed HTML.
         /// </summary>
         /// <param name="document">The HtmlDocument to load into.</param>
         /// <param name="html">The HTML string to parse.</param>
         public static void LoadHtmlWithRegex(this HtmlDocument document, string html)
         {
-            if (html == null)
-                throw new ArgumentNullException(nameof(html));
-
-            // Set the source text
-            document.Text = html;
-            
-            // Initialize ID tracking if enabled
-            if (document.OptionUseIdAttribute)
-            {
-                document.Nodesid = new Dictionary<string, HtmlNode>(StringComparer.OrdinalIgnoreCase);
-            }
-            
-            // Initialize document node
-            var docNode = document.DocumentNode;
-            docNode._innerlength = html.Length;
-            docNode._outerlength = html.Length;
-
-            // Tokenize using regex
-            var tokenizer = new RegexTokenizer();
-            var tokens = tokenizer.TokenizeWithAttributes(html);
-
-            // Build the tree
-            var treeBuilder = new RegexTreeBuilder();
-            treeBuilder.BuildTree(document, tokens, html);
-            
-            // Register IDs if tracking is enabled
-            if (document.OptionUseIdAttribute && document.Nodesid != null)
-            {
-                RegisterIds(document, document.DocumentNode);
-            }
+            DefaultParser.Parse(document, html);
         }
 
-        private static void RegisterIds(HtmlDocument document, HtmlNode node)
+        /// <summary>
+        /// Loads HTML using the pure single-pass regex parser.
+        /// This parser uses .NET balancing groups to parse nested HTML in a single pass.
+        /// Note: Works best with well-formed HTML.
+        /// </summary>
+        /// <param name="document">The HtmlDocument to load into.</param>
+        /// <param name="html">The HTML string to parse.</param>
+        public static void LoadHtmlWithPureRegex(this HtmlDocument document, string html)
         {
-            foreach (var child in node.ChildNodes)
-            {
-                if (child.NodeType == HtmlNodeType.Element)
-                {
-                    var id = child.GetAttributeValue("id", null);
-                    if (id != null && !document.Nodesid.ContainsKey(id))
-                    {
-                        document.Nodesid[id] = child;
-                    }
-                    
-                    if (child.HasChildNodes)
-                    {
-                        RegisterIds(document, child);
-                    }
-                }
-            }
+            PureParser.Parse(document, html);
         }
+
+        /// <summary>
+        /// Loads HTML using a specific parser implementation.
+        /// </summary>
+        /// <param name="document">The HtmlDocument to load into.</param>
+        /// <param name="html">The HTML string to parse.</param>
+        /// <param name="parser">The parser implementation to use.</param>
+        public static void LoadHtmlWithParser(this HtmlDocument document, string html, IHtmlParser parser)
+        {
+            parser.Parse(document, html);
+        }
+
+        /// <summary>
+        /// Gets the default multi-pass parser instance.
+        /// </summary>
+        public static IHtmlParser GetMultiPassParser() => DefaultParser;
+
+        /// <summary>
+        /// Gets the pure single-pass regex parser instance.
+        /// </summary>
+        public static IHtmlParser GetPureRegexParser() => PureParser;
 
         /// <summary>
         /// Loads HTML from a stream using the regex-based parser.
