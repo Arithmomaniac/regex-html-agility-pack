@@ -178,8 +178,13 @@ namespace HtmlAgilityPack.RegexParser
 
         private void AddSelfClosingTag(HtmlDocument document, HtmlNode parentNode, Match match, int position)
         {
-            var tagName = match.Groups["scname"].Value;
-            var rawAttrs = match.Groups["scattrs"].Value.Trim();
+            // Handle both selfclose tags (<br/>) and void elements parsed as opentag (<br>)
+            var tagName = match.Groups["scname"].Success 
+                ? match.Groups["scname"].Value 
+                : match.Groups["otname"].Value;
+            var rawAttrs = match.Groups["scattrs"].Success 
+                ? match.Groups["scattrs"].Value.Trim()
+                : match.Groups["otattrs"].Value.Trim();
 
             var node = document.CreateNode(HtmlNodeType.Element, position);
             node.SetName(tagName.ToLowerInvariant());
