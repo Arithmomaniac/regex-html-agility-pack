@@ -38,15 +38,16 @@ namespace HtmlAgilityPack.RegexParser
         /// <summary>
         /// Master tokenizer - breaks HTML into tokens.
         /// Uses NonBacktracking for safety against ReDoS.
+        /// Uses nested capturing groups to extract content directly, avoiding double-parsing.
         /// </summary>
         [GeneratedRegex(@"
             (?<doctype><!DOCTYPE[^>]*>)                           # DOCTYPE
             |
-            (?<comment><!--.*?-->)                                # Comment
+            (?<comment><!--(?<commentcontent>.*?)-->)             # Comment with nested content capture
             |
-            (?<cdata><!\[CDATA\[.*?\]\]>)                         # CDATA
+            (?<cdata><!\[CDATA\[(?<cdatacontent>.*?)\]\]>)        # CDATA with nested content capture
             |
-            (?<servercode><%.*?%>)                                # Server-side code
+            (?<servercode><%(?<servercodecontent>.*?)%>)          # Server-side code with nested content capture
             |
             (?<selfclose>
                 <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)                 # Tag name
@@ -102,41 +103,71 @@ namespace HtmlAgilityPack.RegexParser
         #region Element Classification (REGEX instead of HashSets!)
 
         /// <summary>
-        /// Matches HTML5 void elements (self-closing by spec).
-        /// Uses regex alternation instead of HashSet for consistency.
+        /// Combined element classifier using nested capturing groups.
+        /// Classifies an element as void, raw text, or block in a single regex match.
+        /// Group structure:
+        /// - "void": matches void elements
+        /// - "rawtext": matches raw text elements  
+        /// - "block": matches block elements
         /// </summary>
-        [GeneratedRegex(@"^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex VoidElementPattern();
+        [GeneratedRegex(@"^(?:
+            (?<void>area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)
+            |
+            (?<rawtext>script|style|textarea|title|xmp|plaintext|listing)
+            |
+            (?<block>address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)
+        )$",
+            RegexOptions.IgnorePatternWhitespace | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        public static partial Regex ElementClassifier();
 
         /// <summary>
-        /// Matches elements whose content is raw text (not parsed as HTML).
+        /// Classification result for an element.
         /// </summary>
-        [GeneratedRegex(@"^(script|style|textarea|title|xmp|plaintext|listing)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex RawTextElementPattern();
+        public enum ElementClass
+        {
+            /// <summary>Not a special element type.</summary>
+            None,
+            /// <summary>Void element (self-closing by spec).</summary>
+            Void,
+            /// <summary>Raw text element (content not parsed as HTML).</summary>
+            RawText,
+            /// <summary>Block element (for implicit closing of p).</summary>
+            Block
+        }
 
         /// <summary>
-        /// Matches HTML5 block elements (for implicit closing of p).
+        /// Classifies an element using a single regex match with nested capturing groups.
+        /// More efficient than calling three separate IsXxx methods.
         /// </summary>
-        [GeneratedRegex(@"^(address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        public static partial Regex BlockElementPattern();
+        public static ElementClass ClassifyElement(string tagName)
+        {
+            var match = ElementClassifier().Match(tagName);
+            if (!match.Success) return ElementClass.None;
+            
+            if (match.Groups["void"].Success) return ElementClass.Void;
+            if (match.Groups["rawtext"].Success) return ElementClass.RawText;
+            if (match.Groups["block"].Success) return ElementClass.Block;
+            
+            return ElementClass.None;
+        }
 
         /// <summary>
         /// Check if tag is void element using regex.
         /// </summary>
-        public static bool IsVoidElement(string tagName) => VoidElementPattern().IsMatch(tagName);
+        public static bool IsVoidElement(string tagName) => 
+            ClassifyElement(tagName) == ElementClass.Void;
 
         /// <summary>
         /// Check if tag is raw text element using regex.
         /// </summary>
-        public static bool IsRawTextElement(string tagName) => RawTextElementPattern().IsMatch(tagName);
+        public static bool IsRawTextElement(string tagName) => 
+            ClassifyElement(tagName) == ElementClass.RawText;
 
         /// <summary>
         /// Check if tag is block element using regex.
         /// </summary>
-        public static bool IsBlockElement(string tagName) => BlockElementPattern().IsMatch(tagName);
+        public static bool IsBlockElement(string tagName) => 
+            ClassifyElement(tagName) == ElementClass.Block;
 
         #endregion
 
@@ -200,6 +231,51 @@ namespace HtmlAgilityPack.RegexParser
                 )
                 (?(DEPTH)(?!))                          # FAIL if stack not empty
                 </{escaped}\s*>                         # Final closing tag
+            ";
+            return new Regex(pattern, 
+                RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>
+        /// Creates a pattern that extracts raw text content using balancing groups for quote tracking.
+        /// This handles edge cases where the closing tag pattern appears inside quoted strings.
+        /// 
+        /// Used by RegexTokenizer.ExtractRawTextContent to safely extract script/style content
+        /// even when it contains strings like: var x = '&lt;/script&gt;';
+        /// </summary>
+        /// <param name="tagName">The raw text element tag name (e.g., "script", "style")</param>
+        /// <returns>A regex that extracts content and closing tag, respecting quoted strings</returns>
+        public static Regex CreateRawTextContentPattern(string tagName)
+        {
+            var escaped = Regex.Escape(tagName);
+            
+            // Pattern uses balancing groups to track quote context:
+            // - DQ stack tracks double quotes
+            // - SQ stack tracks single quotes
+            // The closing tag only matches when both stacks are empty (outside quotes)
+            var pattern = $@"
+                (?<content>
+                  (?>
+                    # Double-quoted string - use balancing group to track
+                    ""(?<DQ>)                                           # Start double quote: PUSH
+                    (?:[^""\\]|\\.)*                                    # String content (with escapes)
+                    ""(?<-DQ>)                                          # End double quote: POP
+                    |
+                    # Single-quoted string - use balancing group to track
+                    '(?<SQ>)                                            # Start single quote: PUSH
+                    (?:[^'\\]|\\.)*                                     # String content (with escapes)
+                    '(?<-SQ>)                                           # End single quote: POP
+                    |
+                    # Regular content (not quote, not potential closing tag start)
+                    [^""'<]+                                            # Text without quotes or <
+                    |
+                    # < that's not the start of our closing tag
+                    <(?!/{escaped}\s*>)
+                  )*
+                )
+                (?(DQ)(?!))                                             # FAIL if DQ stack not empty
+                (?(SQ)(?!))                                             # FAIL if SQ stack not empty
+                (?<closetag></{escaped}\s*>)                            # Closing tag (only when outside quotes)
             ";
             return new Regex(pattern, 
                 RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
