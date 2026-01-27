@@ -47,50 +47,6 @@ namespace HtmlAgilityPack.RegexParser
             }
         }
 
-        /// <summary>
-        /// Pattern for matching the entire HTML structure in one pass.
-        /// Captures: loose content, self-closing tags, and balanced open/close tag pairs.
-        /// </summary>
-        [GeneratedRegex(@"
-            # Match any combination of:
-            (?:
-                # Comments (loose content)
-                (?<comment><!--.*?-->)
-                |
-                # DOCTYPE (loose content)
-                (?<doctype><!DOCTYPE[^>]*>)
-                |
-                # CDATA (loose content)
-                (?<cdata><!\[CDATA\[.*?\]\]>)
-                |
-                # Server-side code (loose content)
-                (?<servercode><%.*?%>)
-                |
-                # Self-closing tags (including void elements)
-                (?<selfclose>
-                    <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)
-                    (?<scattrs>[^>]*)
-                    (?:/>|>)  # Self-closing or void element
-                )
-                |
-                # Balanced open/close tag pair with content
-                (?<opentag>
-                    <(?<otname>[a-zA-Z][a-zA-Z0-9:-]*)
-                    (?<otattrs>(?:[^>""']*|""[^""]*""|'[^']*')*)
-                    >
-                )
-                (?<content>.*?)
-                (?<closetag>
-                    </\k<otname>\s*>
-                )
-                |
-                # Raw text content
-                (?<text>[^<]+)
-            )*
-            ",
-            RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-        private static partial Regex HtmlPattern();
-
         private void ParseRecursive(HtmlDocument document, HtmlNode parentNode, string html, int startIndex, int endIndex)
         {
             if (startIndex >= endIndex || startIndex < 0 || endIndex > html.Length)
