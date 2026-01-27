@@ -55,11 +55,28 @@ namespace HtmlAgilityPack.RegexParser
                 '[^']*'                          # Single-quoted value
             )*";
 
+        // Individual attribute pattern - used to parse attributes from captured section
+        // Defined as constant for composition consistency
+        private const string AttributeParsePattern = @"
+            (?<name>[^\s=/>""']+)               # Attribute name
+            (?:
+                \s*=\s*                          # = with optional whitespace
+                (?:
+                    ""(?<dqval>[^""]*)""         # Double-quoted value
+                    |
+                    '(?<sqval>[^']*)'            # Single-quoted value
+                    |
+                    (?<uqval>[^\s>""']+)         # Unquoted value
+                )
+            )?                                   # Value is optional (boolean attrs)
+            ";
+
         #endregion
 
-        #region The Unified Regex (Single Pattern!)
+        #region Unified Regex Patterns (Built via String Composition!)
 
         private static readonly Regex _unifiedPattern;
+        private static readonly Regex _attrPattern;
         
         static PureRegexParser()
         {
@@ -201,6 +218,10 @@ namespace HtmlAgilityPack.RegexParser
 
             _unifiedPattern = new Regex(pattern,
                 RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+            // Build attribute parser from composed constant
+            _attrPattern = new Regex(AttributeParsePattern,
+                RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
         }
 
         #endregion
@@ -466,21 +487,6 @@ namespace HtmlAgilityPack.RegexParser
             node._lineposition = 1;
             node._streamposition = position;
         }
-
-        // Embedded attribute parsing using same pattern from unified regex
-        private static readonly Regex _attrPattern = new Regex(@"
-            (?<name>[^\s=/>""']+)
-            (?:
-                \s*=\s*
-                (?:
-                    ""(?<dqval>[^""]*)""
-                    |
-                    '(?<sqval>[^']*)'
-                    |
-                    (?<uqval>[^\s>""']+)
-                )
-            )?
-            ", RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
 
         private void ParseAttributes(HtmlDocument document, HtmlNode node, string attrsStr)
         {

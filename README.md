@@ -164,13 +164,11 @@ This **is** a demonstration that:
 2. A single unified regex can handle HTML parsing via string composition
 3. The claim needs an asterisk: *"You can't parse HTML with regex — except in .NET"*
 
-The PureRegexParser uses ONE main regex built via string interpolation that handles:
-- DOCTYPE, comments, self-closing tags, void elements
-- Raw text elements (script, style, textarea)
-- Implicit closing (p, li, dt, dd)
-- Balanced elements with nested same-tags
+The PureRegexParser uses regex patterns built via string composition:
+- **Main unified pattern**: DOCTYPE, comments, self-closing, void elements, raw text, implicit closing, balanced elements
+- **Attribute pattern**: Individual attribute parsing (name, quoted values, unquoted values, boolean attrs)
 
-The attribute parsing uses a separate regex (could be embedded but adds complexity).
+Both patterns are defined as `const string` components and assembled at static initialization time.
 
 ## Files
 
