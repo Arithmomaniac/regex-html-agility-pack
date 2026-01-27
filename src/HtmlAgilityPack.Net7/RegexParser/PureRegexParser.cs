@@ -44,39 +44,40 @@ namespace HtmlAgilityPack.RegexParser
         private const string ImplicitCloseTagsLi = "li";
         private const string ImplicitCloseTagsDt = "dt|dd";
         
-        // Attribute section pattern - captures everything between tag name and >
-        // Handles quoted values that might contain > characters
-        private const string AttributeSection = @"
-            (?:
-                [^>""']*                         # Non-quote, non-> characters
-                |
-                ""[^""]*""                       # Double-quoted value  
-                |
-                '[^']*'                          # Single-quoted value
-            )*";
-
-        // Individual attribute pattern - used to parse attributes from captured section
-        // Defined as constant for composition consistency
-        private const string AttributeParsePattern = @"
-            (?<name>[^\s=/>""']+)               # Attribute name
+        // ============================================================================
+        // ATTRIBUTE PATTERN - Embedded directly into the main regex!
+        // ============================================================================
+        // This pattern captures INDIVIDUAL ATTRIBUTES using .NET's Captures collection.
+        // When a named group is inside a quantifier, match.Groups["name"].Captures
+        // gives you ALL the individual matches - no separate regex needed!
+        // ============================================================================
+        
+        // Single attribute pattern - captures name and value in one match
+        // Uses alternation for the three value types: double-quoted, single-quoted, unquoted
+        private const string SingleAttribute = @"
+            \s+                                  # Whitespace before attribute (required)
+            (?<attrname>[^\s=/>""']+)            # Attribute name
             (?:
                 \s*=\s*                          # = with optional whitespace
                 (?:
-                    ""(?<dqval>[^""]*)""         # Double-quoted value
+                    ""(?<attrdqval>[^""]*)""     # Double-quoted value
                     |
-                    '(?<sqval>[^']*)'            # Single-quoted value
+                    '(?<attrsqval>[^']*)'        # Single-quoted value
                     |
-                    (?<uqval>[^\s>""']+)         # Unquoted value
+                    (?<attruqval>[^\s>""']+)     # Unquoted value
                 )
             )?                                   # Value is optional (boolean attrs)
             ";
+        
+        // Attribute section pattern - captures ALL attributes via repeated SingleAttribute
+        // The magic: each capture of attrname/attrdqval/etc goes into Captures collection!
+        private const string AttributeSection = @"(?:" + SingleAttribute + @")*";
 
         #endregion
 
-        #region Unified Regex Patterns (Built via String Composition!)
+        #region The SINGLE UNIFIED REGEX (No separate attribute regex!)
 
         private static readonly Regex _unifiedPattern;
-        private static readonly Regex _attrPattern;
         
         static PureRegexParser()
         {
@@ -218,10 +219,10 @@ namespace HtmlAgilityPack.RegexParser
 
             _unifiedPattern = new Regex(pattern,
                 RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-            // Build attribute parser from composed constant
-            _attrPattern = new Regex(AttributeParsePattern,
-                RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
+            
+            // NO SEPARATE ATTRIBUTE REGEX!
+            // Attributes are captured directly in the main pattern via attrname/attrdqval/attrsqval/attruqval groups
+            // Using .NET's Captures collection to get all attribute matches
         }
 
         #endregion
@@ -352,7 +353,6 @@ namespace HtmlAgilityPack.RegexParser
         private void ProcessSelfCloseTag(HtmlDocument document, HtmlNode parent, Match match, int basePosition)
         {
             var tagName = match.Groups["scname"].Value;
-            var attrsStr = match.Groups["scattrs"].Value;
             
             var node = document.CreateNode(HtmlNodeType.Element, basePosition + match.Index);
             node.SetName(tagName.ToLowerInvariant());
@@ -360,14 +360,13 @@ namespace HtmlAgilityPack.RegexParser
             node._endnode = node;
             node._innerlength = 0;
             
-            ParseAttributes(document, node, attrsStr);
+            ParseAttributesFromMatch(document, node, match);
             parent.AppendChild(node);
         }
 
         private void ProcessVoidElement(HtmlDocument document, HtmlNode parent, Match match, int basePosition)
         {
             var tagName = match.Groups["vename"].Value;
-            var attrsStr = match.Groups["veattrs"].Value;
             
             var node = document.CreateNode(HtmlNodeType.Element, basePosition + match.Index);
             node.SetName(tagName.ToLowerInvariant());
@@ -375,14 +374,13 @@ namespace HtmlAgilityPack.RegexParser
             node._endnode = node;
             node._innerlength = 0;
             
-            ParseAttributes(document, node, attrsStr);
+            ParseAttributesFromMatch(document, node, match);
             parent.AppendChild(node);
         }
 
         private void ProcessRawTextElement(HtmlDocument document, HtmlNode parent, Match match, int basePosition)
         {
             var tagName = match.Groups["rtname"].Value;
-            var attrsStr = match.Groups["rtattrs"].Value;
             var rawContent = match.Groups["rtcontent"].Value;
             
             var node = document.CreateNode(HtmlNodeType.Element, basePosition + match.Index);
@@ -398,7 +396,7 @@ namespace HtmlAgilityPack.RegexParser
             node._endnode = document.CreateNode(HtmlNodeType.Element, basePosition + match.Index + match.Length - tagName.Length - 3);
             node._endnode.SetName(tagName.ToLowerInvariant());
             
-            ParseAttributes(document, node, attrsStr);
+            ParseAttributesFromMatch(document, node, match);
             parent.AppendChild(node);
             
             // Add raw content as text node (not parsed!)
@@ -412,7 +410,6 @@ namespace HtmlAgilityPack.RegexParser
             string nameGroup, string attrsGroup, string contentGroup)
         {
             var tagName = match.Groups[nameGroup].Value;
-            var attrsStr = match.Groups[attrsGroup].Value;
             var innerContent = match.Groups[contentGroup].Value;
             
             var node = document.CreateNode(HtmlNodeType.Element, basePosition + match.Index);
@@ -424,7 +421,7 @@ namespace HtmlAgilityPack.RegexParser
             node._innerstartindex = basePosition + match.Groups[contentGroup].Index;
             node._innerlength = innerContent.Length;
             
-            ParseAttributes(document, node, attrsStr);
+            ParseAttributesFromMatch(document, node, match);
             parent.AppendChild(node);
             
             // Recursively parse inner content
@@ -437,7 +434,6 @@ namespace HtmlAgilityPack.RegexParser
         private void ProcessBalancedElement(HtmlDocument document, HtmlNode parent, Match match, int basePosition)
         {
             var tagName = match.Groups["tagname"].Value;
-            var attrsStr = match.Groups["attrs"].Value;
             var innerContent = match.Groups["content"].Value;
             var openTagLength = match.Groups["opentag"].Length;
             
@@ -457,7 +453,7 @@ namespace HtmlAgilityPack.RegexParser
             node._endnode._outerstartindex = basePosition + closeTagStart;
             node._endnode._outerlength = match.Groups["closetag"].Length;
             
-            ParseAttributes(document, node, attrsStr);
+            ParseAttributesFromMatch(document, node, match);
             parent.AppendChild(node);
             
             // Recursively parse inner content
@@ -488,44 +484,113 @@ namespace HtmlAgilityPack.RegexParser
             node._streamposition = position;
         }
 
-        private void ParseAttributes(HtmlDocument document, HtmlNode node, string attrsStr)
+        /// <summary>
+        /// Parses attributes from the main regex match using Captures collection.
+        /// NO SEPARATE REGEX NEEDED - attributes are captured directly in the unified pattern!
+        /// 
+        /// This is the key: .NET's Captures collection gives us all individual matches
+        /// when a named group is inside a quantifier. The main regex pattern has:
+        ///   (?&lt;attrname&gt;...)(?&lt;attrdqval&gt;...|&lt;attrsqval&gt;...|&lt;attruqval&gt;...)?
+        /// repeated via *, and Captures[i] gives us each attribute.
+        /// </summary>
+        private void ParseAttributesFromMatch(HtmlDocument document, HtmlNode node, Match match)
         {
-            if (string.IsNullOrWhiteSpace(attrsStr))
+            var nameCaptures = match.Groups["attrname"].Captures;
+            var dqCaptures = match.Groups["attrdqval"].Captures;
+            var sqCaptures = match.Groups["attrsqval"].Captures;
+            var uqCaptures = match.Groups["attruqval"].Captures;
+            
+            if (nameCaptures.Count == 0)
                 return;
 
-            foreach (Match match in _attrPattern.Matches(attrsStr))
+            // Build index maps for value captures (they may not align 1:1 with names due to boolean attrs)
+            var dqByIndex = new Dictionary<int, string>();
+            var sqByIndex = new Dictionary<int, string>();
+            var uqByIndex = new Dictionary<int, string>();
+            
+            foreach (Capture c in dqCaptures)
+                dqByIndex[c.Index] = c.Value;
+            foreach (Capture c in sqCaptures)
+                sqByIndex[c.Index] = c.Value;
+            foreach (Capture c in uqCaptures)
+                uqByIndex[c.Index] = c.Value;
+
+            foreach (Capture nameCapture in nameCaptures)
             {
-                var nameGroup = match.Groups["name"];
-                if (!nameGroup.Success || string.IsNullOrWhiteSpace(nameGroup.Value))
+                var attrName = nameCapture.Value;
+                if (string.IsNullOrWhiteSpace(attrName))
                     continue;
 
+                // Find the value capture that comes after this name
+                // Look for value captures that start after the name ends
+                var nameEnd = nameCapture.Index + nameCapture.Length;
+                
                 string? value = null;
                 var quoteType = AttributeValueQuote.WithoutValue;
-
-                var dqGroup = match.Groups["dqval"];
-                var sqGroup = match.Groups["sqval"];
-                var uqGroup = match.Groups["uqval"];
-
-                if (dqGroup.Success)
+                
+                // Check each value type - the one closest after nameEnd wins
+                int? bestValueStart = null;
+                
+                foreach (var kvp in dqByIndex)
                 {
-                    value = dqGroup.Value;
-                    quoteType = AttributeValueQuote.DoubleQuote;
+                    if (kvp.Key > nameEnd && (bestValueStart == null || kvp.Key < bestValueStart))
+                    {
+                        // Check this isn't actually for a later attribute
+                        var nextNameStart = GetNextNameStart(nameCaptures, nameCapture.Index);
+                        if (nextNameStart == null || kvp.Key < nextNameStart)
+                        {
+                            bestValueStart = kvp.Key;
+                            value = kvp.Value;
+                            quoteType = AttributeValueQuote.DoubleQuote;
+                        }
+                    }
                 }
-                else if (sqGroup.Success)
+                
+                foreach (var kvp in sqByIndex)
                 {
-                    value = sqGroup.Value;
-                    quoteType = AttributeValueQuote.SingleQuote;
+                    if (kvp.Key > nameEnd && (bestValueStart == null || kvp.Key < bestValueStart))
+                    {
+                        var nextNameStart = GetNextNameStart(nameCaptures, nameCapture.Index);
+                        if (nextNameStart == null || kvp.Key < nextNameStart)
+                        {
+                            bestValueStart = kvp.Key;
+                            value = kvp.Value;
+                            quoteType = AttributeValueQuote.SingleQuote;
+                        }
+                    }
                 }
-                else if (uqGroup.Success)
+                
+                foreach (var kvp in uqByIndex)
                 {
-                    value = uqGroup.Value;
-                    quoteType = AttributeValueQuote.None;
+                    if (kvp.Key > nameEnd && (bestValueStart == null || kvp.Key < bestValueStart))
+                    {
+                        var nextNameStart = GetNextNameStart(nameCaptures, nameCapture.Index);
+                        if (nextNameStart == null || kvp.Key < nextNameStart)
+                        {
+                            bestValueStart = kvp.Key;
+                            value = kvp.Value;
+                            quoteType = AttributeValueQuote.None;
+                        }
+                    }
                 }
 
-                var attr = document.CreateAttribute(nameGroup.Value, value ?? "");
+                var attr = document.CreateAttribute(attrName, value ?? "");
                 attr.QuoteType = quoteType;
                 node.Attributes.Append(attr);
             }
+        }
+        
+        private static int? GetNextNameStart(CaptureCollection captures, int afterIndex)
+        {
+            int? nextStart = null;
+            foreach (Capture c in captures)
+            {
+                if (c.Index > afterIndex && (nextStart == null || c.Index < nextStart))
+                {
+                    nextStart = c.Index;
+                }
+            }
+            return nextStart;
         }
 
         private static void RegisterIds(HtmlDocument document, HtmlNode node)

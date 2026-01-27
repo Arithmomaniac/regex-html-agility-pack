@@ -9,27 +9,42 @@
 
 This is a **regex-powered HTML parser** that implements the HtmlAgilityPack interface using **.NET's balancing groups** feature. It demonstrates that the "impossible" is possible — with an asterisk.
 
-## 🌟 The Pure Regex Parser
+## 🌟 Two Regex Parsers, Both Using Balancing Groups
 
-The crown jewel of this project is `PureRegexParser` — a **single-pass HTML parser built from ONE UNIFIED REGEX** composed via string interpolation. This proves that .NET regex can handle the full complexity of HTML parsing:
+This project provides **two complete HTML parser implementations**, both proving that regex CAN parse HTML in .NET:
+
+### 1. PureRegexParser — ONE Regex To Rule Them All
+
+The `PureRegexParser` is a **single-pass HTML parser built from ONE UNIFIED REGEX** composed via string interpolation. Everything—including attribute parsing—is embedded in one massive regex pattern:
 
 ```csharp
-// The "impossible" parser - ONE regex handles everything
 var doc = new HtmlDocument();
-doc.LoadHtmlWithPureRegex("<div><div>Nested!</div></div>");
+doc.LoadHtmlWithPureRegex("<div class='outer'><div>Nested!</div></div>");
 ```
 
-### What the Pure Parser Handles (via regex alone!)
+**Key features:**
+- **ZERO separate regexes** - attributes captured directly in the main pattern via `.Captures` collection
+- Uses .NET balancing groups (`(?<DEPTH>)`, `(?<-DEPTH>)`, `(?(DEPTH)(?!))`) for nested tag matching
+- Handles implicit closing via lookahead patterns
+- Raw text elements (`<script>`, `<style>`, `<textarea>`) preserved literally
 
-| Feature | Implementation |
-|---------|---------------|
-| **Nested same-tags** | `(?<DEPTH>)` push, `(?<-DEPTH>)` pop, `(?(DEPTH)(?!))` balance check |
-| **Implicit tag closing** | `<p>A<p>B<p>C` → 3 separate `<p>` elements via lookahead patterns |
-| **Raw text elements** | `<script>`, `<style>`, `<textarea>` content preserved literally |
-| **Void elements** | `<br>`, `<img>`, `<input>` etc. treated as self-closing |
-| **Attributes** | Quoted, unquoted, and boolean attributes |
+### 2. MultiPassRegexParser — Regex All The Way Down
 
-All in **ONE regex pattern** built via string composition at static initialization time.
+The `MultiPassRegexParser` uses a traditional multi-pass architecture, but **every pass is powered by regex**:
+
+```csharp
+var doc = new HtmlDocument();
+doc.LoadHtmlWithRegex("<div><div>Nested!</div></div>");
+```
+
+**Key features:**
+- **Pass 1**: Master tokenizer regex breaks HTML into tokens
+- **Pass 2**: Attribute parser regex extracts individual attributes
+- **Pass 3**: Regex-based element classification (void, block, raw text)
+- **Pass 4**: Regex-based implicit closing rules
+- Uses `[GeneratedRegex]` source generators for compile-time pattern optimization
+
+**Both parsers use regex throughout. Both prove the same point: .NET regex with balancing groups CAN parse HTML.**
 
 ## The Claim vs. Reality
 
@@ -76,40 +91,19 @@ Here's the core pattern that matches balanced tags with arbitrary nesting depth:
 
 ## Dual Parser Architecture
 
-This project provides **two parser implementations** via the `IHtmlParser` interface:
-
-### 1. PureRegexParser (Single-Pass) — ⭐ The Cool One
-- **ONE unified regex** handles all HTML constructs
-- Uses .NET balancing groups for nested tag matching
-- Built via string composition (no [GeneratedRegex] needed for the main pattern)
-- Handles implicit closing via lookahead patterns
-- ~500 lines including the massive regex pattern
-
-```csharp
-doc.LoadHtmlWithPureRegex(html);  // Use the pure regex parser
-```
-
-### 2. MultiPassRegexParser (Tokenize → Build)
-- **Pass 1**: Tokenize HTML using regex
-- **Pass 2**: Parse attributes using regex  
-- **Pass 3**: Build tree with regex-assisted rules
-- More traditional architecture, battle-tested
-
-```csharp
-doc.LoadHtmlWithRegex(html);  // Use the multi-pass parser (default)
-```
+Both parsers implement `IHtmlParser` and pass all 50 tests:
 
 ### Parser Comparison
 
 | Feature | PureRegexParser | MultiPassRegexParser |
 |---------|----------------|---------------------|
-| Architecture | Single unified regex | Multi-pass tokenization |
-| Nested elements | ✅ Balancing groups | ✅ Stack-based |
-| Implicit closing | ✅ Lookahead patterns | ✅ Rule-based |
-| Raw text elements | ✅ Regex capture | ✅ State tracking |
-| Test coverage | 50/50 tests passing | 50/50 tests passing |
-
-**Both parsers pass all 50 xUnit tests!**
+| **Architecture** | Single unified regex | Multi-pass with regex at each stage |
+| **Balancing groups** | ✅ For nested elements | ✅ Used in HtmlPatterns factory |
+| **Attribute parsing** | ✅ Embedded in main regex | ✅ Separate [GeneratedRegex] |
+| **Source generators** | ❌ Uses runtime composition | ✅ Uses [GeneratedRegex] |
+| **Implicit closing** | ✅ Lookahead patterns | ✅ Regex rule matching |
+| **Raw text elements** | ✅ Regex capture | ✅ State tracking + regex |
+| **Test coverage** | 50/50 tests passing | 50/50 tests passing |
 
 ## Usage
 
@@ -119,10 +113,10 @@ using HtmlAgilityPack;
 var doc = new HtmlDocument();
 doc.OptionUseIdAttribute = true;  // Enable GetElementById
 
-// Pure regex parser - the "impossible" single-pass approach
+// Pure regex parser - ONE regex does everything
 doc.LoadHtmlWithPureRegex("<p>A<p>B<p>C");  // Implicit closing works!
 
-// Multi-pass parser - traditional tokenize → build approach
+// Multi-pass regex parser - regex at every stage
 doc.LoadHtmlWithRegex("<div><div>Nested!</div></div>");
 
 // Custom parser injection
@@ -159,29 +153,27 @@ Results: 50/50 tests passing (100% compatibility)
 
 ## Intellectual Honesty
 
-This **is** a demonstration that:
-1. The core "impossible" operation (nested matching) works in .NET regex
-2. A single unified regex can handle HTML parsing via string composition
+Both parsers demonstrate that:
+1. The core "impossible" operation (nested matching) works in .NET regex via balancing groups
+2. A complete HTML parser can be built with regex as the primary parsing mechanism
 3. The claim needs an asterisk: *"You can't parse HTML with regex — except in .NET"*
 
-The PureRegexParser uses regex patterns built via string composition:
-- **Main unified pattern**: DOCTYPE, comments, self-closing, void elements, raw text, implicit closing, balanced elements
-- **Attribute pattern**: Individual attribute parsing (name, quoted values, unquoted values, boolean attrs)
+**PureRegexParser**: ONE regex pattern handles everything including attribute extraction via `.Captures` collection.
 
-Both patterns are defined as `const string` components and assembled at static initialization time.
+**MultiPassRegexParser**: Regex at every stage—tokenization, attributes, classification, and implicit closing rules—all powered by `.NET regex` including balancing groups in the pattern factory.
 
 ## Files
 
 ```
 src/HtmlAgilityPack.Net7/RegexParser/
 ├── IHtmlParser.cs             # Common interface for both parsers
-├── PureRegexParser.cs         # ⭐ THE IMPOSSIBLE PARSER - single unified regex
-├── MultiPassRegexParser.cs    # Traditional multi-pass approach
+├── PureRegexParser.cs         # ⭐ ONE REGEX - balancing groups + embedded attributes
+├── MultiPassRegexParser.cs    # Regex at every pass - also uses balancing groups
 ├── RegexBalancingDemo.cs      # Proof of concept: balancing groups work
 ├── Token.cs                   # Token types and structures
-├── HtmlPatterns.cs            # [GeneratedRegex] patterns for multi-pass
-├── RegexTokenizer.cs          # HTML → tokens (multi-pass)
-├── RegexTreeBuilder.cs        # Tokens → HtmlNode tree (multi-pass)
+├── HtmlPatterns.cs            # [GeneratedRegex] patterns including balancing group factory
+├── RegexTokenizer.cs          # HTML → tokens via regex
+├── RegexTreeBuilder.cs        # Tokens → HtmlNode tree with regex rules
 └── HtmlDocumentRegexExtensions.cs  # Extension methods
 ```
 
