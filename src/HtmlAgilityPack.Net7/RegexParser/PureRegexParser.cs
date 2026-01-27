@@ -503,94 +503,50 @@ namespace HtmlAgilityPack.RegexParser
             if (nameCaptures.Count == 0)
                 return;
 
-            // Build index maps for value captures (they may not align 1:1 with names due to boolean attrs)
-            var dqByIndex = new Dictionary<int, string>();
-            var sqByIndex = new Dictionary<int, string>();
-            var uqByIndex = new Dictionary<int, string>();
-            
+            // Pre-sort all value captures by index for efficient lookup
+            var allValues = new List<(int Index, string Value, AttributeValueQuote QuoteType)>();
             foreach (Capture c in dqCaptures)
-                dqByIndex[c.Index] = c.Value;
+                allValues.Add((c.Index, c.Value, AttributeValueQuote.DoubleQuote));
             foreach (Capture c in sqCaptures)
-                sqByIndex[c.Index] = c.Value;
+                allValues.Add((c.Index, c.Value, AttributeValueQuote.SingleQuote));
             foreach (Capture c in uqCaptures)
-                uqByIndex[c.Index] = c.Value;
+                allValues.Add((c.Index, c.Value, AttributeValueQuote.None));
+            allValues.Sort((a, b) => a.Index.CompareTo(b.Index));
 
-            foreach (Capture nameCapture in nameCaptures)
+            // Pre-compute sorted name positions for efficient boundary checking
+            var namePositions = new List<(int Index, int EndIndex, string Name)>();
+            foreach (Capture c in nameCaptures)
             {
-                var attrName = nameCapture.Value;
-                if (string.IsNullOrWhiteSpace(attrName))
-                    continue;
+                if (!string.IsNullOrWhiteSpace(c.Value))
+                    namePositions.Add((c.Index, c.Index + c.Length, c.Value));
+            }
+            namePositions.Sort((a, b) => a.Index.CompareTo(b.Index));
 
-                // Find the value capture that comes after this name
-                // Look for value captures that start after the name ends
-                var nameEnd = nameCapture.Index + nameCapture.Length;
-                
+            // Process each attribute in O(n) by walking through sorted lists
+            int valueIdx = 0;
+            for (int i = 0; i < namePositions.Count; i++)
+            {
+                var (nameIndex, nameEnd, attrName) = namePositions[i];
+                var nextNameStart = (i + 1 < namePositions.Count) ? namePositions[i + 1].Index : int.MaxValue;
+
                 string? value = null;
                 var quoteType = AttributeValueQuote.WithoutValue;
+
+                // Find the first value that starts after this name and before the next name
+                while (valueIdx < allValues.Count && allValues[valueIdx].Index <= nameEnd)
+                    valueIdx++; // Skip values that start before or at name end
                 
-                // Check each value type - the one closest after nameEnd wins
-                int? bestValueStart = null;
-                
-                foreach (var kvp in dqByIndex)
+                if (valueIdx < allValues.Count && allValues[valueIdx].Index < nextNameStart)
                 {
-                    if (kvp.Key > nameEnd && (bestValueStart == null || kvp.Key < bestValueStart))
-                    {
-                        // Check this isn't actually for a later attribute
-                        var nextNameStart = GetNextNameStart(nameCaptures, nameCapture.Index);
-                        if (nextNameStart == null || kvp.Key < nextNameStart)
-                        {
-                            bestValueStart = kvp.Key;
-                            value = kvp.Value;
-                            quoteType = AttributeValueQuote.DoubleQuote;
-                        }
-                    }
-                }
-                
-                foreach (var kvp in sqByIndex)
-                {
-                    if (kvp.Key > nameEnd && (bestValueStart == null || kvp.Key < bestValueStart))
-                    {
-                        var nextNameStart = GetNextNameStart(nameCaptures, nameCapture.Index);
-                        if (nextNameStart == null || kvp.Key < nextNameStart)
-                        {
-                            bestValueStart = kvp.Key;
-                            value = kvp.Value;
-                            quoteType = AttributeValueQuote.SingleQuote;
-                        }
-                    }
-                }
-                
-                foreach (var kvp in uqByIndex)
-                {
-                    if (kvp.Key > nameEnd && (bestValueStart == null || kvp.Key < bestValueStart))
-                    {
-                        var nextNameStart = GetNextNameStart(nameCaptures, nameCapture.Index);
-                        if (nextNameStart == null || kvp.Key < nextNameStart)
-                        {
-                            bestValueStart = kvp.Key;
-                            value = kvp.Value;
-                            quoteType = AttributeValueQuote.None;
-                        }
-                    }
+                    value = allValues[valueIdx].Value;
+                    quoteType = allValues[valueIdx].QuoteType;
+                    valueIdx++; // Consume this value
                 }
 
                 var attr = document.CreateAttribute(attrName, value ?? "");
                 attr.QuoteType = quoteType;
                 node.Attributes.Append(attr);
             }
-        }
-        
-        private static int? GetNextNameStart(CaptureCollection captures, int afterIndex)
-        {
-            int? nextStart = null;
-            foreach (Capture c in captures)
-            {
-                if (c.Index > afterIndex && (nextStart == null || c.Index < nextStart))
-                {
-                    nextStart = c.Index;
-                }
-            }
-            return nextStart;
         }
 
         private static void RegisterIds(HtmlDocument document, HtmlNode node)
