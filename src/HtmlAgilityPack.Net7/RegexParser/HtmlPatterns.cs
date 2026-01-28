@@ -54,25 +54,25 @@ namespace HtmlAgilityPack.RegexParser
         /// embedded in larger patterns like PureRegexParser's unified regex. The standalone
         /// AttributeParser() uses shorter names (name, dqval, etc.) since it operates independently.
         /// </summary>
-        public const string SingleAttributePattern = @"
+        public const string SingleAttributePattern = """
             \s+                                  # Whitespace before attribute (required)
-            (?<attrname>[^\s=/>""']+)            # Attribute name
+            (?<attrname>[^\s=/>"']+)            # Attribute name
             (?:
                 \s*=\s*                          # = with optional whitespace
                 (?:
-                    ""(?<attrdqval>[^""]*)""     # Double-quoted value
+                    "(?<attrdqval>[^"]*)"     # Double-quoted value
                     |
                     '(?<attrsqval>[^']*)'        # Single-quoted value
                     |
-                    (?<attruqval>[^\s>""']+)     # Unquoted value
+                    (?<attruqval>[^\s>"']+)     # Unquoted value
                 )
             )?                                   # Value is optional (boolean attrs)
-            ";
+            """;
         
         /// <summary>
         /// Pattern string for attribute section - captures ALL attributes via repeated SingleAttribute.
         /// </summary>
-        public const string AttributeSectionPattern = @"(?:" + SingleAttributePattern + @")*";
+        public const string AttributeSectionPattern = """(?:\s+(?<attrname>[^\s=/>"']+)(?:\s*=\s*(?:"(?<attrdqval>[^"]*)"|'(?<attrsqval>[^']*)'|(?<attruqval>[^\s>"']+)))?)*""";
 
         #endregion
 
@@ -105,7 +105,7 @@ namespace HtmlAgilityPack.RegexParser
         /// Uses NonBacktracking for safety against ReDoS.
         /// Uses nested capturing groups to extract content directly, avoiding double-parsing.
         /// </summary>
-        [GeneratedRegex(@"
+        [GeneratedRegex("""
             (?<doctype><!DOCTYPE[^>]*>)                           # DOCTYPE
             |
             (?<comment><!--(?<commentcontent>.*?)-->)             # Comment with nested content capture
@@ -123,8 +123,8 @@ namespace HtmlAgilityPack.RegexParser
             (?<opentag>
                 <(?<otname>[a-zA-Z][a-zA-Z0-9:-]*)                 # Tag name
                 (?<otattrs>                                       # Attributes section
-                    (?:[^>""']*                                   # Non-quote, non->
-                        |""[^""]*""                               # Double-quoted value
+                    (?:[^>"']*                                   # Non-quote, non->
+                        |"[^"]*"                               # Double-quoted value
                         |'[^']*'                                  # Single-quoted value
                     )*
                 )
@@ -136,7 +136,7 @@ namespace HtmlAgilityPack.RegexParser
             )
             |
             (?<text>[^<]+)                                        # Text content
-            ",
+            """,
             RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled)]
         public static partial Regex MasterTokenizer();
 
@@ -147,19 +147,19 @@ namespace HtmlAgilityPack.RegexParser
         /// <summary>
         /// Parses attributes from a tag's attribute string.
         /// </summary>
-        [GeneratedRegex(@"
-            (?<name>[^\s=/>""']+)                   # Attribute name
+        [GeneratedRegex("""
+            (?<name>[^\s=/>"']+)                   # Attribute name
             (?:
                 \s*=\s*                             # = with optional whitespace
                 (?:
-                    ""(?<dqval>[^""]*)""            # Double-quoted value
+                    "(?<dqval>[^"]*)"            # Double-quoted value
                     |
                     '(?<sqval>[^']*)'               # Single-quoted value
                     |
-                    (?<uqval>[^\s>""']+)            # Unquoted value
+                    (?<uqval>[^\s>"']+)            # Unquoted value
                 )
             )?                                      # Value is optional (boolean attrs)
-            ",
+            """,
             RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled)]
         public static partial Regex AttributeParser();
 
@@ -175,13 +175,15 @@ namespace HtmlAgilityPack.RegexParser
         /// - "rawtext": matches raw text elements  
         /// - "block": matches block elements
         /// </summary>
-        [GeneratedRegex(@"^(?:
+        [GeneratedRegex("""
+            ^(?:
             (?<void>area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)
             |
             (?<rawtext>script|style|textarea|title|xmp|plaintext|listing)
             |
             (?<block>address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)
-        )$",
+            )$
+            """,
             RegexOptions.IgnorePatternWhitespace | RegexOptions.IgnoreCase | RegexOptions.Compiled)]
         public static partial Regex ElementClassifier();
 
@@ -318,13 +320,13 @@ namespace HtmlAgilityPack.RegexParser
             // - DQ stack tracks double quotes
             // - SQ stack tracks single quotes
             // The closing tag only matches when both stacks are empty (outside quotes)
-            var pattern = $@"
+            var pattern = $"""
                 (?<content>
                   (?>
                     # Double-quoted string - use balancing group to track
-                    ""(?<DQ>)                                           # Start double quote: PUSH
-                    (?:[^""\\]|\\.)*                                    # String content (with escapes)
-                    ""(?<-DQ>)                                          # End double quote: POP
+                    "(?<DQ>)                                           # Start double quote: PUSH
+                    (?:[^"\\]|\\.)*                                    # String content (with escapes)
+                    "(?<-DQ>)                                          # End double quote: POP
                     |
                     # Single-quoted string - use balancing group to track
                     '(?<SQ>)                                            # Start single quote: PUSH
@@ -332,7 +334,7 @@ namespace HtmlAgilityPack.RegexParser
                     '(?<-SQ>)                                           # End single quote: POP
                     |
                     # Regular content (not quote, not potential closing tag start)
-                    [^""'<]+                                            # Text without quotes or <
+                    [^"'<]+                                            # Text without quotes or <
                     |
                     # < that's not the start of our closing tag
                     <(?!/{escaped}\s*>)
@@ -341,7 +343,7 @@ namespace HtmlAgilityPack.RegexParser
                 (?(DQ)(?!))                                             # FAIL if DQ stack not empty
                 (?(SQ)(?!))                                             # FAIL if SQ stack not empty
                 (?<closetag></{escaped}\s*>)                            # Closing tag (only when outside quotes)
-            ";
+            """;
             return new Regex(pattern, 
                 RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
         }
