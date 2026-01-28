@@ -49,6 +49,10 @@ namespace HtmlAgilityPack.RegexParser
         /// <summary>
         /// Pattern string for attribute matching (single attribute with name and optional value).
         /// Captures attrname, attrdqval (double-quoted), attrsqval (single-quoted), attruqval (unquoted).
+        /// 
+        /// Note: Uses prefixed group names (attrname, attrdqval, etc.) to avoid collisions when
+        /// embedded in larger patterns like PureRegexParser's unified regex. The standalone
+        /// AttributeParser() uses shorter names (name, dqval, etc.) since it operates independently.
         /// </summary>
         public const string SingleAttributePattern = @"
             \s+                                  # Whitespace before attribute (required)
