@@ -9,8 +9,12 @@ namespace HtmlAgilityPack.RegexParser
     /// It leverages .NET's balancing groups to track tag nesting depth, proving
     /// that .NET regex can handle context-free grammars.
     /// 
-    /// This implementation uses a SINGLE UNIFIED REGEX built via string composition
-    /// that handles:
+    /// This implementation uses a SINGLE UNIFIED REGEX with:
+    /// - [GeneratedRegex] source generator for compile-time validation
+    /// - C# 10+ constant interpolated strings to reference shared HtmlPatterns constants
+    /// - .NET balancing groups for nested element matching
+    /// 
+    /// Features handled:
     /// - Nested balanced elements (the "impossible" case)
     /// - Raw text elements (script, style, textarea) - content not parsed as HTML
     /// - Implicit tag closing rules (p, li, dt, dd, etc.)
@@ -18,212 +22,170 @@ namespace HtmlAgilityPack.RegexParser
     /// - Self-closing syntax
     /// - Comments and DOCTYPE
     /// </summary>
-    public class PureRegexParser : IHtmlParser
+    public partial class PureRegexParser : IHtmlParser
     {
         /// <inheritdoc />
         public string ParserName => "Pure Regex (Single-Pass Balancing Groups)";
 
-        // ============================================================================
-        // SINGLE UNIFIED REGEX - Built via string composition
-        // ============================================================================
-        // All patterns are composed into ONE regex at construction time.
-        // This proves that pure regex (with .NET balancing groups) can parse HTML.
-        // ============================================================================
+        #region Pattern Constants (C# 10+ Constant Interpolated Strings)
 
-        #region Pattern Components (Composed into single regex)
-
-        // Void elements that don't need closing tags
-        private const string VoidElements = "area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen";
+        // Shared constants from HtmlPatterns - used directly in [GeneratedRegex] via constant interpolation
+        private const string VoidElements = HtmlPatterns.VoidElementsPattern;
+        private const string RawTextElements = HtmlPatterns.RawTextElementsPattern;
+        private const string BlockElements = HtmlPatterns.BlockElementsPattern;
+        private const string ImplicitCloseTagsP = HtmlPatterns.ImplicitCloseTagsPPattern;
+        private const string ImplicitCloseTagsLi = HtmlPatterns.ImplicitCloseTagsLiPattern;
+        private const string ImplicitCloseTagsDt = HtmlPatterns.ImplicitCloseTagsDtPattern;
+        private const string AttributeSection = HtmlPatterns.AttributeSectionPattern;
         
-        // Raw text elements whose content is NOT parsed as HTML
-        private const string RawTextElements = "script|style|textarea|title|xmp|plaintext|listing";
-        
-        // Tags that implicitly close themselves (p closes when another p/block starts, li closes on li, etc.)
-        private const string ImplicitCloseTagsP = "p";
-        private const string BlockElements = "address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video";
-        private const string ImplicitCloseTagsLi = "li";
-        private const string ImplicitCloseTagsDt = "dt|dd";
-        
-        // ============================================================================
-        // ATTRIBUTE PATTERN - Embedded directly into the main regex!
-        // ============================================================================
-        // This pattern captures INDIVIDUAL ATTRIBUTES using .NET's Captures collection.
-        // When a named group is inside a quantifier, match.Groups["name"].Captures
-        // gives you ALL the individual matches - no separate regex needed!
-        // ============================================================================
-        
-        // Single attribute pattern - captures name and value in one match
-        // Uses alternation for the three value types: double-quoted, single-quoted, unquoted
-        private const string SingleAttribute = @"
-            \s+                                  # Whitespace before attribute (required)
-            (?<attrname>[^\s=/>""']+)            # Attribute name
-            (?:
-                \s*=\s*                          # = with optional whitespace
-                (?:
-                    ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                    |
-                    '(?<attrsqval>[^']*)'        # Single-quoted value
-                    |
-                    (?<attruqval>[^\s>""']+)     # Unquoted value
-                )
-            )?                                   # Value is optional (boolean attrs)
-            ";
-        
-        // Attribute section pattern - captures ALL attributes via repeated SingleAttribute
-        // The magic: each capture of attrname/attrdqval/etc goes into Captures collection!
-        private const string AttributeSection = @"(?:" + SingleAttribute + @")*";
+        // Combined pattern for p and block elements (used in implicit closing)
+        private const string POrBlockElements = $"{ImplicitCloseTagsP}|{BlockElements}";
 
         #endregion
 
-        #region The SINGLE UNIFIED REGEX (No separate attribute regex!)
+        #region Source-Generated Unified Regex (with Constant Interpolated Strings)
 
-        private static readonly Regex _unifiedPattern;
-        
-        static PureRegexParser()
-        {
-            // Build THE SINGLE UNIFIED PATTERN via string composition
-            // This is the heart of the "impossible" parser
-            var pattern = $@"
-                # ====== DOCTYPE ======
-                (?<doctype><!DOCTYPE[^>]*>)
-                |
-                # ====== COMMENTS ======
-                (?<comment><!--.*?-->)
-                |
-                # ====== SELF-CLOSING SYNTAX (explicit />) ======
-                (?<selfclose>
-                    <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)
-                    (?<scattrs>{AttributeSection})
-                    \s*/\s*>
-                )
-                |
-                # ====== VOID ELEMENTS (no closing tag needed) ======
-                (?<voidelem>
-                    <(?<vename>{VoidElements})
-                    (?<veattrs>{AttributeSection})
-                    \s*/?\s*>
-                )
-                |
-                # ====== RAW TEXT ELEMENTS (script, style, textarea) ======
-                # Content inside these is NOT parsed as HTML - captured as raw text
-                (?<rawtext>
-                    <(?<rtname>{RawTextElements})
-                    (?<rtattrs>{AttributeSection})
+        /// <summary>
+        /// The unified HTML parsing regex using .NET balancing groups.
+        /// Source-generated with C# 10+ constant interpolated strings for:
+        /// - Compile-time pattern validation
+        /// - Optimal runtime performance  
+        /// - Consistency with shared HtmlPatterns constants
+        /// </summary>
+        [GeneratedRegex($@"
+            # ====== DOCTYPE ======
+            (?<doctype><!DOCTYPE[^>]*>)
+            |
+            # ====== COMMENTS ======
+            (?<comment><!--.*?-->)
+            |
+            # ====== SELF-CLOSING SYNTAX (explicit />) ======
+            (?<selfclose>
+                <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)
+                (?<scattrs>{AttributeSection})
+                \s*/\s*>
+            )
+            |
+            # ====== VOID ELEMENTS (no closing tag needed) ======
+            (?<voidelem>
+                <(?<vename>{VoidElements})
+                (?<veattrs>{AttributeSection})
+                \s*/?\s*>
+            )
+            |
+            # ====== RAW TEXT ELEMENTS (script, style, textarea) ======
+            # Content inside these is NOT parsed as HTML - captured as raw text
+            (?<rawtext>
+                <(?<rtname>{RawTextElements})
+                (?<rtattrs>{AttributeSection})
+                \s*>
+                (?<rtcontent>.*?)           # Non-greedy capture of raw content
+                </\k<rtname>\s*>            # Matching close tag
+            )
+            |
+            # ====== BALANCED ELEMENTS (The 'Impossible' Case!) ======
+            # Uses .NET balancing groups to track nested same-tags
+            # NOTE: This comes BEFORE implicit patterns so properly closed tags are handled first
+            (?<balanced>
+                (?<opentag>
+                    <(?<tagname>[a-zA-Z][a-zA-Z0-9:-]*)
+                    (?<attrs>{AttributeSection})
                     \s*>
-                    (?<rtcontent>.*?)           # Non-greedy capture of raw content
-                    </\k<rtname>\s*>            # Matching close tag
                 )
-                |
-                # ====== BALANCED ELEMENTS (The 'Impossible' Case!) ======
-                # Uses .NET balancing groups to track nested same-tags
-                # NOTE: This comes BEFORE implicit patterns so properly closed tags are handled first
-                (?<balanced>
-                    (?<opentag>
-                        <(?<tagname>[a-zA-Z][a-zA-Z0-9:-]*)
-                        (?<attrs>{AttributeSection})
-                        \s*>
-                    )
-                    (?<content>
-                        (?>                                                 # Atomic group (no backtracking)
-                            [^<]+                                           # Text content
-                            |
-                            <!--.*?-->                                      # Nested comments
-                            |
-                            <(?<DEPTH>)\k<tagname>\b[^>]*>                   # Same-tag open: PUSH
-                            |
-                            </\k<tagname>\s*>(?<-DEPTH>)                     # Same-tag close: POP
-                            |
-                            <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>                # Nested self-closing
-                            |
-                            <(?:{VoidElements})\b[^>]*>                     # Nested void elements
-                            |
-                            <(?!/?\k<tagname>\b)[^>]+>                       # Other nested tags
-                        )*
-                    )
-                    (?(DEPTH)(?!))                                          # FAIL if depth not zero
-                    (?<closetag></\k<tagname>\s*>)                           # Closing tag
+                (?<content>
+                    (?>                                                 # Atomic group (no backtracking)
+                        [^<]+                                           # Text content
+                        |
+                        <!--.*?-->                                      # Nested comments
+                        |
+                        <(?<DEPTH>)\k<tagname>\b[^>]*>                   # Same-tag open: PUSH
+                        |
+                        </\k<tagname>\s*>(?<-DEPTH>)                     # Same-tag close: POP
+                        |
+                        <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>                # Nested self-closing
+                        |
+                        <(?:{VoidElements})\b[^>]*>                      # Nested void elements
+                        |
+                        <(?!/?\k<tagname>\b)[^>]+>                       # Other nested tags
+                    )*
                 )
-                |
-                # ====== IMPLICIT CLOSE: <p> elements ======
-                # When we see <p>, it implicitly closes any open <p>
-                # This handles: <p>A<p>B<p>C → three separate <p> elements
-                # NOTE: Only matches when balanced pattern above fails (no explicit </p>)
-                (?<implicit_p>
-                    <(?<ipname>{ImplicitCloseTagsP})
-                    (?<ipattrs>{AttributeSection})
-                    \s*>
-                    (?<ipcontent>
-                        (?:
-                            [^<]+                                           # Text
-                            |
-                            <!--.*?-->                                      # Comments
-                            |
-                            <(?:{VoidElements})\b[^>]*/?\s*>                # Void elements  
-                            |
-                            <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>               # Self-closing
-                            |
-                            <(?!/?(?:{ImplicitCloseTagsP}|{BlockElements})\b)[^>]+>  # Other non-block tags
-                        )*?
-                    )
-                    (?=<(?:{ImplicitCloseTagsP}|{BlockElements})\b|</|$)    # Lookahead: closes before next p/block
+                (?(DEPTH)(?!))                                          # FAIL if depth not zero
+                (?<closetag></\k<tagname>\s*>)                           # Closing tag
+            )
+            |
+            # ====== IMPLICIT CLOSE: <p> elements ======
+            # When we see <p>, it implicitly closes any open <p>
+            # This handles: <p>A<p>B<p>C → three separate <p> elements
+            # NOTE: Only matches when balanced pattern above fails (no explicit </p>)
+            (?<implicit_p>
+                <(?<ipname>{ImplicitCloseTagsP})
+                (?<ipattrs>{AttributeSection})
+                \s*>
+                (?<ipcontent>
+                    (?:
+                        [^<]+                                           # Text
+                        |
+                        <!--.*?-->                                      # Comments
+                        |
+                        <(?:{VoidElements})\b[^>]*/?\s*>                 # Void elements  
+                        |
+                        <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>                # Self-closing
+                        |
+                        <(?!/?(?:{POrBlockElements})\b)[^>]+>            # Other non-block tags
+                    )*?
                 )
-                |
-                # ====== IMPLICIT CLOSE: <li> elements ======
-                (?<implicit_li>
-                    <(?<ilname>{ImplicitCloseTagsLi})
-                    (?<ilattrs>{AttributeSection})
-                    \s*>
-                    (?<ilcontent>
-                        (?:
-                            [^<]+
-                            |
-                            <!--.*?-->
-                            |
-                            <(?:{VoidElements})\b[^>]*/?\s*>
-                            |
-                            <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>
-                            |
-                            <(?!/?{ImplicitCloseTagsLi}\b)[^>]+>
-                        )*?
-                    )
-                    (?=<{ImplicitCloseTagsLi}\b|</(?:ul|ol|{ImplicitCloseTagsLi})\b|$)
+                (?=<(?:{POrBlockElements})\b|</|$)                       # Lookahead: closes before next p/block
+            )
+            |
+            # ====== IMPLICIT CLOSE: <li> elements ======
+            (?<implicit_li>
+                <(?<ilname>{ImplicitCloseTagsLi})
+                (?<ilattrs>{AttributeSection})
+                \s*>
+                (?<ilcontent>
+                    (?:
+                        [^<]+
+                        |
+                        <!--.*?-->
+                        |
+                        <(?:{VoidElements})\b[^>]*/?\s*>
+                        |
+                        <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>
+                        |
+                        <(?!/?{ImplicitCloseTagsLi}\b)[^>]+>
+                    )*?
                 )
-                |
-                # ====== IMPLICIT CLOSE: <dt>/<dd> elements ======
-                (?<implicit_dt>
-                    <(?<idtname>{ImplicitCloseTagsDt})
-                    (?<idtattrs>{AttributeSection})
-                    \s*>
-                    (?<idtcontent>
-                        (?:
-                            [^<]+
-                            |
-                            <!--.*?-->
-                            |
-                            <(?:{VoidElements})\b[^>]*/?\s*>
-                            |
-                            <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>
-                            |
-                            <(?!/?(?:{ImplicitCloseTagsDt})\b)[^>]+>
-                        )*?
-                    )
-                    (?=<(?:{ImplicitCloseTagsDt})\b|</dl\b|$)
+                (?=<{ImplicitCloseTagsLi}\b|</(?:ul|ol|{ImplicitCloseTagsLi})\b|$)
+            )
+            |
+            # ====== IMPLICIT CLOSE: <dt>/<dd> elements ======
+            (?<implicit_dt>
+                <(?<idtname>{ImplicitCloseTagsDt})
+                (?<idtattrs>{AttributeSection})
+                \s*>
+                (?<idtcontent>
+                    (?:
+                        [^<]+
+                        |
+                        <!--.*?-->
+                        |
+                        <(?:{VoidElements})\b[^>]*/?\s*>
+                        |
+                        <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>
+                        |
+                        <(?!/?(?:{ImplicitCloseTagsDt})\b)[^>]+>
+                    )*?
                 )
-                |
-                # ====== ORPHAN CLOSE TAGS ======
-                (?<orphanclose></[a-zA-Z][a-zA-Z0-9:-]*\s*>)
-                |
-                # ====== TEXT CONTENT ======
-                (?<text>[^<]+)
-            ";
-
-            _unifiedPattern = new Regex(pattern,
-                RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            
-            // NO SEPARATE ATTRIBUTE REGEX!
-            // Attributes are captured directly in the main pattern via attrname/attrdqval/attrsqval/attruqval groups
-            // Using .NET's Captures collection to get all attribute matches
-        }
+                (?=<(?:{ImplicitCloseTagsDt})\b|</dl\b|$)
+            )
+            |
+            # ====== ORPHAN CLOSE TAGS ======
+            (?<orphanclose></[a-zA-Z][a-zA-Z0-9:-]*\s*>)
+            |
+            # ====== TEXT CONTENT ======
+            (?<text>[^<]+)
+        ", RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+        private static partial Regex UnifiedPattern();
 
         #endregion
 
@@ -263,8 +225,8 @@ namespace HtmlAgilityPack.RegexParser
             
             while (currentPos < html.Length)
             {
-                // THE SINGLE REGEX does all the work
-                var match = _unifiedPattern.Match(html, currentPos);
+                // THE SINGLE REGEX does all the work (now source-generated!)
+                var match = UnifiedPattern().Match(html, currentPos);
                 
                 if (!match.Success || match.Index > currentPos)
                 {
