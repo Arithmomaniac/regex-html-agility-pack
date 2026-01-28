@@ -15,7 +15,25 @@ This project provides **two complete HTML parser implementations**, both proving
 
 ### 1. PureRegexParser — ONE Regex To Rule Them All
 
-The `PureRegexParser` is a **single-pass HTML parser built from ONE UNIFIED REGEX** composed via string interpolation. Everything—including attribute parsing—is embedded in one massive regex pattern:
+The `PureRegexParser` is a **single-pass HTML parser built from ONE UNIFIED REGEX** using:
+- **[GeneratedRegex] source generator** for compile-time pattern validation
+- **C# 10+ constant interpolated strings** ([csharplang#2951](https://github.com/dotnet/csharplang/issues/2951)) to compose patterns from shared constants
+
+```csharp
+// Pattern constants are shared and composed via constant interpolation
+private const string VoidElements = HtmlPatterns.VoidElementsPattern;
+private const string AttributeSection = HtmlPatterns.AttributeSectionPattern;
+
+[GeneratedRegex($@"
+    (?<voidelem>
+        <(?<vename>{VoidElements})
+        (?<veattrs>{AttributeSection})
+        \s*/?\s*>
+    )
+    ...
+")]
+private static partial Regex UnifiedPattern();
+```
 
 ```csharp
 var doc = new HtmlDocument();
@@ -23,7 +41,8 @@ doc.LoadHtmlWithPureRegex("<div class='outer'><div>Nested!</div></div>");
 ```
 
 **Key features:**
-- **ZERO separate regexes** - attributes captured directly in the main pattern via `.Captures` collection
+- **Source-generated regex** with compile-time validation
+- **Constant interpolated strings** reference shared `HtmlPatterns` constants
 - Uses .NET balancing groups (`(?<DEPTH>)`, `(?<-DEPTH>)`, `(?(DEPTH)(?!))`) for nested tag matching
 - Handles implicit closing via lookahead patterns
 - Raw text elements (`<script>`, `<style>`, `<textarea>`) preserved literally
@@ -98,9 +117,10 @@ Both parsers implement `IHtmlParser` and pass all 50 tests:
 | Feature | PureRegexParser | MultiPassRegexParser |
 |---------|----------------|---------------------|
 | **Architecture** | Single unified regex | Multi-pass with regex at each stage |
+| **Source generators** | ✅ `[GeneratedRegex]` | ✅ `[GeneratedRegex]` |
+| **Constant interpolation** | ✅ C# 10+ `$"{Constant}"` | ❌ Direct patterns |
 | **Balancing groups** | ✅ For nested elements | ✅ Used in HtmlPatterns factory |
-| **Attribute parsing** | ✅ Embedded in main regex | ✅ Separate [GeneratedRegex] |
-| **Source generators** | ❌ Uses runtime composition | ✅ Uses [GeneratedRegex] |
+| **Attribute parsing** | ✅ Embedded in main regex | ✅ Separate `[GeneratedRegex]` |
 | **Implicit closing** | ✅ Lookahead patterns | ✅ Regex rule matching |
 | **Raw text elements** | ✅ Regex capture | ✅ State tracking + regex |
 | **Test coverage** | 50/50 tests passing | 50/50 tests passing |
@@ -167,11 +187,11 @@ Both parsers demonstrate that:
 ```
 src/HtmlAgilityPack.Net7/RegexParser/
 ├── IHtmlParser.cs             # Common interface for both parsers
-├── PureRegexParser.cs         # ⭐ ONE REGEX - balancing groups + embedded attributes
-├── MultiPassRegexParser.cs    # Regex at every pass - also uses balancing groups
+├── PureRegexParser.cs         # ⭐ ONE REGEX - [GeneratedRegex] + constant interpolation
+├── MultiPassRegexParser.cs    # Regex at every pass - also uses [GeneratedRegex]
 ├── RegexBalancingDemo.cs      # Proof of concept: balancing groups work
 ├── Token.cs                   # Token types and structures
-├── HtmlPatterns.cs            # [GeneratedRegex] patterns including balancing group factory
+├── HtmlPatterns.cs            # Shared pattern constants + [GeneratedRegex] patterns
 ├── RegexTokenizer.cs          # HTML → tokens via regex
 ├── RegexTreeBuilder.cs        # Tokens → HtmlNode tree with regex rules
 └── HtmlDocumentRegexExtensions.cs  # Extension methods
@@ -182,6 +202,7 @@ src/HtmlAgilityPack.Net7/RegexParser/
 - [Stack Overflow: RegEx match open tags except XHTML self-contained tags](https://stackoverflow.com/a/1732454) — The famous answer
 - [.NET Balancing Groups Documentation](https://docs.microsoft.com/en-us/dotnet/standard/base-types/grouping-constructs-in-regular-expressions#balancing-group-definitions)
 - [Regular Expression Improvements in .NET 7](https://devblogs.microsoft.com/dotnet/regular-expression-improvements-in-dotnet-7/) — Source generators
+- [C# 10 Constant Interpolated Strings](https://github.com/dotnet/csharplang/issues/2951) — Enables `$"{Constant}"` in const expressions
 
 ## License
 

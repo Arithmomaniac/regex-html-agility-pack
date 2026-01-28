@@ -9,8 +9,12 @@ namespace HtmlAgilityPack.RegexParser
     /// It leverages .NET's balancing groups to track tag nesting depth, proving
     /// that .NET regex can handle context-free grammars.
     /// 
-    /// This implementation uses a SINGLE UNIFIED REGEX (now source-generated!)
-    /// that handles:
+    /// This implementation uses a SINGLE UNIFIED REGEX with:
+    /// - [GeneratedRegex] source generator for compile-time validation
+    /// - C# 10+ constant interpolated strings to reference shared HtmlPatterns constants
+    /// - .NET balancing groups for nested element matching
+    /// 
+    /// Features handled:
     /// - Nested balanced elements (the "impossible" case)
     /// - Raw text elements (script, style, textarea) - content not parsed as HTML
     /// - Implicit tag closing rules (p, li, dt, dd, etc.)
@@ -23,42 +27,32 @@ namespace HtmlAgilityPack.RegexParser
         /// <inheritdoc />
         public string ParserName => "Pure Regex (Single-Pass Balancing Groups)";
 
-        // ============================================================================
-        // SINGLE UNIFIED REGEX - Built via string composition
-        // ============================================================================
-        // All patterns are composed into ONE regex at construction time.
-        // This proves that pure regex (with .NET balancing groups) can parse HTML.
-        // ============================================================================
+        #region Pattern Constants (C# 10+ Constant Interpolated Strings)
 
-        #region Pattern Components (Reference shared constants from HtmlPatterns)
-
-        // These local constants reference HtmlPatterns for consistency.
-        // They are kept for documentation but the actual GeneratedRegex below
-        // uses the literal pattern strings directly (required by source generators).
+        // Shared constants from HtmlPatterns - used directly in [GeneratedRegex] via constant interpolation
         private const string VoidElements = HtmlPatterns.VoidElementsPattern;
         private const string RawTextElements = HtmlPatterns.RawTextElementsPattern;
         private const string BlockElements = HtmlPatterns.BlockElementsPattern;
         private const string ImplicitCloseTagsP = HtmlPatterns.ImplicitCloseTagsPPattern;
         private const string ImplicitCloseTagsLi = HtmlPatterns.ImplicitCloseTagsLiPattern;
         private const string ImplicitCloseTagsDt = HtmlPatterns.ImplicitCloseTagsDtPattern;
-        private const string SingleAttribute = HtmlPatterns.SingleAttributePattern;
         private const string AttributeSection = HtmlPatterns.AttributeSectionPattern;
+        
+        // Combined pattern for p and block elements (used in implicit closing)
+        private const string POrBlockElements = $"{ImplicitCloseTagsP}|{BlockElements}";
 
         #endregion
 
-        #region The SINGLE UNIFIED REGEX (Source Generated!)
+        #region Source-Generated Unified Regex (with Constant Interpolated Strings)
 
         /// <summary>
         /// The unified HTML parsing regex using .NET balancing groups.
-        /// This is the "impossible" parser - using regex alone to parse nested HTML.
-        /// Now source-generated for compile-time validation and optimal performance.
-        /// 
-        /// Pattern uses the same element lists as HtmlPatterns constants:
-        /// - VoidElements: area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen
-        /// - RawTextElements: script|style|textarea|title|xmp|plaintext|listing
-        /// - BlockElements: address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video
+        /// Source-generated with C# 10+ constant interpolated strings for:
+        /// - Compile-time pattern validation
+        /// - Optimal runtime performance  
+        /// - Consistency with shared HtmlPatterns constants
         /// </summary>
-        [GeneratedRegex(@"
+        [GeneratedRegex($@"
             # ====== DOCTYPE ======
             (?<doctype><!DOCTYPE[^>]*>)
             |
@@ -68,61 +62,22 @@ namespace HtmlAgilityPack.RegexParser
             # ====== SELF-CLOSING SYNTAX (explicit />) ======
             (?<selfclose>
                 <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)
-                (?<scattrs>(?:
-                    \s+                                  # Whitespace before attribute (required)
-                    (?<attrname>[^\s=/>""']+)            # Attribute name
-                    (?:
-                        \s*=\s*                          # = with optional whitespace
-                        (?:
-                            ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                            |
-                            '(?<attrsqval>[^']*)'        # Single-quoted value
-                            |
-                            (?<attruqval>[^\s>""']+)     # Unquoted value
-                        )
-                    )?                                   # Value is optional (boolean attrs)
-                )*)
+                (?<scattrs>{AttributeSection})
                 \s*/\s*>
             )
             |
             # ====== VOID ELEMENTS (no closing tag needed) ======
             (?<voidelem>
-                <(?<vename>area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)
-                (?<veattrs>(?:
-                    \s+                                  # Whitespace before attribute (required)
-                    (?<attrname>[^\s=/>""']+)            # Attribute name
-                    (?:
-                        \s*=\s*                          # = with optional whitespace
-                        (?:
-                            ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                            |
-                            '(?<attrsqval>[^']*)'        # Single-quoted value
-                            |
-                            (?<attruqval>[^\s>""']+)     # Unquoted value
-                        )
-                    )?                                   # Value is optional (boolean attrs)
-                )*)
+                <(?<vename>{VoidElements})
+                (?<veattrs>{AttributeSection})
                 \s*/?\s*>
             )
             |
             # ====== RAW TEXT ELEMENTS (script, style, textarea) ======
             # Content inside these is NOT parsed as HTML - captured as raw text
             (?<rawtext>
-                <(?<rtname>script|style|textarea|title|xmp|plaintext|listing)
-                (?<rtattrs>(?:
-                    \s+                                  # Whitespace before attribute (required)
-                    (?<attrname>[^\s=/>""']+)            # Attribute name
-                    (?:
-                        \s*=\s*                          # = with optional whitespace
-                        (?:
-                            ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                            |
-                            '(?<attrsqval>[^']*)'        # Single-quoted value
-                            |
-                            (?<attruqval>[^\s>""']+)     # Unquoted value
-                        )
-                    )?                                   # Value is optional (boolean attrs)
-                )*)
+                <(?<rtname>{RawTextElements})
+                (?<rtattrs>{AttributeSection})
                 \s*>
                 (?<rtcontent>.*?)           # Non-greedy capture of raw content
                 </\k<rtname>\s*>            # Matching close tag
@@ -134,20 +89,7 @@ namespace HtmlAgilityPack.RegexParser
             (?<balanced>
                 (?<opentag>
                     <(?<tagname>[a-zA-Z][a-zA-Z0-9:-]*)
-                    (?<attrs>(?:
-                        \s+                                  # Whitespace before attribute (required)
-                        (?<attrname>[^\s=/>""']+)            # Attribute name
-                        (?:
-                            \s*=\s*                          # = with optional whitespace
-                            (?:
-                                ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                                |
-                                '(?<attrsqval>[^']*)'        # Single-quoted value
-                                |
-                                (?<attruqval>[^\s>""']+)     # Unquoted value
-                            )
-                        )?                                   # Value is optional (boolean attrs)
-                    )*)
+                    (?<attrs>{AttributeSection})
                     \s*>
                 )
                 (?<content>
@@ -162,7 +104,7 @@ namespace HtmlAgilityPack.RegexParser
                         |
                         <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>                # Nested self-closing
                         |
-                        <(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)\b[^>]*>                     # Nested void elements
+                        <(?:{VoidElements})\b[^>]*>                      # Nested void elements
                         |
                         <(?!/?\k<tagname>\b)[^>]+>                       # Other nested tags
                     )*
@@ -176,21 +118,8 @@ namespace HtmlAgilityPack.RegexParser
             # This handles: <p>A<p>B<p>C → three separate <p> elements
             # NOTE: Only matches when balanced pattern above fails (no explicit </p>)
             (?<implicit_p>
-                <(?<ipname>p)
-                (?<ipattrs>(?:
-                    \s+                                  # Whitespace before attribute (required)
-                    (?<attrname>[^\s=/>""']+)            # Attribute name
-                    (?:
-                        \s*=\s*                          # = with optional whitespace
-                        (?:
-                            ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                            |
-                            '(?<attrsqval>[^']*)'        # Single-quoted value
-                            |
-                            (?<attruqval>[^\s>""']+)     # Unquoted value
-                        )
-                    )?                                   # Value is optional (boolean attrs)
-                )*)
+                <(?<ipname>{ImplicitCloseTagsP})
+                (?<ipattrs>{AttributeSection})
                 \s*>
                 (?<ipcontent>
                     (?:
@@ -198,33 +127,20 @@ namespace HtmlAgilityPack.RegexParser
                         |
                         <!--.*?-->                                      # Comments
                         |
-                        <(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)\b[^>]*/?\s*>                # Void elements  
+                        <(?:{VoidElements})\b[^>]*/?\s*>                 # Void elements  
                         |
-                        <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>               # Self-closing
+                        <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>                # Self-closing
                         |
-                        <(?!/?(?:p|address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)\b)[^>]+>  # Other non-block tags
+                        <(?!/?(?:{POrBlockElements})\b)[^>]+>            # Other non-block tags
                     )*?
                 )
-                (?=<(?:p|address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video)\b|</|$)    # Lookahead: closes before next p/block
+                (?=<(?:{POrBlockElements})\b|</|$)                       # Lookahead: closes before next p/block
             )
             |
             # ====== IMPLICIT CLOSE: <li> elements ======
             (?<implicit_li>
-                <(?<ilname>li)
-                (?<ilattrs>(?:
-                    \s+                                  # Whitespace before attribute (required)
-                    (?<attrname>[^\s=/>""']+)            # Attribute name
-                    (?:
-                        \s*=\s*                          # = with optional whitespace
-                        (?:
-                            ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                            |
-                            '(?<attrsqval>[^']*)'        # Single-quoted value
-                            |
-                            (?<attruqval>[^\s>""']+)     # Unquoted value
-                        )
-                    )?                                   # Value is optional (boolean attrs)
-                )*)
+                <(?<ilname>{ImplicitCloseTagsLi})
+                (?<ilattrs>{AttributeSection})
                 \s*>
                 (?<ilcontent>
                     (?:
@@ -232,33 +148,20 @@ namespace HtmlAgilityPack.RegexParser
                         |
                         <!--.*?-->
                         |
-                        <(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)\b[^>]*/?\s*>
+                        <(?:{VoidElements})\b[^>]*/?\s*>
                         |
                         <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>
                         |
-                        <(?!/?li\b)[^>]+>
+                        <(?!/?{ImplicitCloseTagsLi}\b)[^>]+>
                     )*?
                 )
-                (?=<li\b|</(?:ul|ol|li)\b|$)
+                (?=<{ImplicitCloseTagsLi}\b|</(?:ul|ol|{ImplicitCloseTagsLi})\b|$)
             )
             |
             # ====== IMPLICIT CLOSE: <dt>/<dd> elements ======
             (?<implicit_dt>
-                <(?<idtname>dt|dd)
-                (?<idtattrs>(?:
-                    \s+                                  # Whitespace before attribute (required)
-                    (?<attrname>[^\s=/>""']+)            # Attribute name
-                    (?:
-                        \s*=\s*                          # = with optional whitespace
-                        (?:
-                            ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                            |
-                            '(?<attrsqval>[^']*)'        # Single-quoted value
-                            |
-                            (?<attruqval>[^\s>""']+)     # Unquoted value
-                        )
-                    )?                                   # Value is optional (boolean attrs)
-                )*)
+                <(?<idtname>{ImplicitCloseTagsDt})
+                (?<idtattrs>{AttributeSection})
                 \s*>
                 (?<idtcontent>
                     (?:
@@ -266,14 +169,14 @@ namespace HtmlAgilityPack.RegexParser
                         |
                         <!--.*?-->
                         |
-                        <(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen)\b[^>]*/?\s*>
+                        <(?:{VoidElements})\b[^>]*/?\s*>
                         |
                         <[a-zA-Z][a-zA-Z0-9:-]*[^>]*/\s*>
                         |
-                        <(?!/?(?:dt|dd)\b)[^>]+>
+                        <(?!/?(?:{ImplicitCloseTagsDt})\b)[^>]+>
                     )*?
                 )
-                (?=<(?:dt|dd)\b|</dl\b|$)
+                (?=<(?:{ImplicitCloseTagsDt})\b|</dl\b|$)
             )
             |
             # ====== ORPHAN CLOSE TAGS ======
