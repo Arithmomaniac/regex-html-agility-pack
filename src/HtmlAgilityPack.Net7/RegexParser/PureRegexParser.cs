@@ -30,48 +30,18 @@ namespace HtmlAgilityPack.RegexParser
         // This proves that pure regex (with .NET balancing groups) can parse HTML.
         // ============================================================================
 
-        #region Pattern Components (Composed into single regex)
+        #region Pattern Components (Reference shared constants from HtmlPatterns)
 
-        // Void elements that don't need closing tags
-        private const string VoidElements = "area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen";
-        
-        // Raw text elements whose content is NOT parsed as HTML
-        private const string RawTextElements = "script|style|textarea|title|xmp|plaintext|listing";
-        
-        // Tags that implicitly close themselves (p closes when another p/block starts, li closes on li, etc.)
-        private const string ImplicitCloseTagsP = "p";
-        private const string BlockElements = "address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video";
-        private const string ImplicitCloseTagsLi = "li";
-        private const string ImplicitCloseTagsDt = "dt|dd";
-        
-        // ============================================================================
-        // ATTRIBUTE PATTERN - Embedded directly into the main regex!
-        // ============================================================================
-        // This pattern captures INDIVIDUAL ATTRIBUTES using .NET's Captures collection.
-        // When a named group is inside a quantifier, match.Groups["name"].Captures
-        // gives you ALL the individual matches - no separate regex needed!
-        // ============================================================================
-        
-        // Single attribute pattern - captures name and value in one match
-        // Uses alternation for the three value types: double-quoted, single-quoted, unquoted
-        private const string SingleAttribute = @"
-            \s+                                  # Whitespace before attribute (required)
-            (?<attrname>[^\s=/>""']+)            # Attribute name
-            (?:
-                \s*=\s*                          # = with optional whitespace
-                (?:
-                    ""(?<attrdqval>[^""]*)""     # Double-quoted value
-                    |
-                    '(?<attrsqval>[^']*)'        # Single-quoted value
-                    |
-                    (?<attruqval>[^\s>""']+)     # Unquoted value
-                )
-            )?                                   # Value is optional (boolean attrs)
-            ";
-        
-        // Attribute section pattern - captures ALL attributes via repeated SingleAttribute
-        // The magic: each capture of attrname/attrdqval/etc goes into Captures collection!
-        private const string AttributeSection = @"(?:" + SingleAttribute + @")*";
+        // Use shared constants from HtmlPatterns to ensure consistency
+        // between the pure regex parser and source-generated patterns
+        private const string VoidElements = HtmlPatterns.VoidElementsPattern;
+        private const string RawTextElements = HtmlPatterns.RawTextElementsPattern;
+        private const string BlockElements = HtmlPatterns.BlockElementsPattern;
+        private const string ImplicitCloseTagsP = HtmlPatterns.ImplicitCloseTagsPPattern;
+        private const string ImplicitCloseTagsLi = HtmlPatterns.ImplicitCloseTagsLiPattern;
+        private const string ImplicitCloseTagsDt = HtmlPatterns.ImplicitCloseTagsDtPattern;
+        private const string SingleAttribute = HtmlPatterns.SingleAttributePattern;
+        private const string AttributeSection = HtmlPatterns.AttributeSectionPattern;
 
         #endregion
 

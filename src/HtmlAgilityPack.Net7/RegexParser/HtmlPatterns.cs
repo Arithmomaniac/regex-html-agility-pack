@@ -11,6 +11,67 @@ namespace HtmlAgilityPack.RegexParser
     /// </summary>
     public static partial class HtmlPatterns
     {
+        #region Element Pattern Constants (Shared across all parsers)
+        
+        /// <summary>
+        /// Pattern string for void elements that don't need closing tags.
+        /// Used in both source-generated and runtime-composed regex patterns.
+        /// </summary>
+        public const string VoidElementsPattern = "area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|basefont|bgsound|frame|isindex|keygen";
+        
+        /// <summary>
+        /// Pattern string for raw text elements whose content is NOT parsed as HTML.
+        /// Used in both source-generated and runtime-composed regex patterns.
+        /// </summary>
+        public const string RawTextElementsPattern = "script|style|textarea|title|xmp|plaintext|listing";
+        
+        /// <summary>
+        /// Pattern string for block elements (for implicit closing of p).
+        /// Used in both source-generated and runtime-composed regex patterns.
+        /// </summary>
+        public const string BlockElementsPattern = "address|article|aside|blockquote|canvas|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|noscript|ol|p|pre|section|table|tfoot|ul|video";
+        
+        /// <summary>
+        /// Pattern string for implicit closing tags (p element).
+        /// </summary>
+        public const string ImplicitCloseTagsPPattern = "p";
+        
+        /// <summary>
+        /// Pattern string for implicit closing tags (li element).
+        /// </summary>
+        public const string ImplicitCloseTagsLiPattern = "li";
+        
+        /// <summary>
+        /// Pattern string for implicit closing tags (dt/dd elements).
+        /// </summary>
+        public const string ImplicitCloseTagsDtPattern = "dt|dd";
+        
+        /// <summary>
+        /// Pattern string for attribute matching (single attribute with name and optional value).
+        /// Captures attrname, attrdqval (double-quoted), attrsqval (single-quoted), attruqval (unquoted).
+        /// </summary>
+        public const string SingleAttributePattern = @"
+            \s+                                  # Whitespace before attribute (required)
+            (?<attrname>[^\s=/>""']+)            # Attribute name
+            (?:
+                \s*=\s*                          # = with optional whitespace
+                (?:
+                    ""(?<attrdqval>[^""]*)""     # Double-quoted value
+                    |
+                    '(?<attrsqval>[^']*)'        # Single-quoted value
+                    |
+                    (?<attruqval>[^\s>""']+)     # Unquoted value
+                )
+            )?                                   # Value is optional (boolean attrs)
+            ";
+        
+        /// <summary>
+        /// Pattern string for attribute section - captures ALL attributes via repeated SingleAttribute.
+        /// </summary>
+        public const string AttributeSectionPattern = @"(?:" + SingleAttributePattern + @")*";
+
+        #endregion
+
         #region Source-Generated Patterns (Compile-time validated!)
 
         /// <summary>
