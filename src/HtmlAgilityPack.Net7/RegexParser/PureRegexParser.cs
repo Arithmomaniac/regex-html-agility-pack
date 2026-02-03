@@ -190,22 +190,19 @@ namespace HtmlAgilityPack.RegexParser
         #endregion
 
         /// <summary>
-        /// Context for iterative parsing using a stack-based approach.
-        /// Each context represents a level in the tree being parsed.
+        /// Represents a match with its parent context for building the tree.
         /// </summary>
-        private struct ParseContext
+        private struct MatchInfo
         {
+            public Match Match;
             public HtmlNode Parent;
-            public string Html;
             public int BasePosition;
-            public int CurrentPos;
 
-            public ParseContext(HtmlNode parent, string html, int basePosition, int currentPos)
+            public MatchInfo(Match match, HtmlNode parent, int basePosition)
             {
+                Match = match;
                 Parent = parent;
-                Html = html;
                 BasePosition = basePosition;
-                CurrentPos = currentPos;
             }
         }
 
@@ -229,8 +226,8 @@ namespace HtmlAgilityPack.RegexParser
             docNode._innerlength = html.Length;
             docNode._outerlength = html.Length;
 
-            // Iterative parsing using an explicit stack
-            ParseIterative(document, docNode, html, 0);
+            // ONE regex call captures everything
+            BuildTreeFromMatches(document, docNode, html, 0);
             
             // Register IDs if tracking is enabled
             if (document.OptionUseIdAttribute && document.Nodesid != null)
@@ -239,145 +236,127 @@ namespace HtmlAgilityPack.RegexParser
             }
         }
 
-        private void ParseIterative(HtmlDocument document, HtmlNode parent, string html, int basePosition)
+        private void BuildTreeFromMatches(HtmlDocument document, HtmlNode parent, string html, int basePosition)
         {
-            // Stack-based iterative approach to replace recursion
-            var stack = new Stack<ParseContext>();
-            stack.Push(new ParseContext(parent, html, basePosition, 0));
+            // *** ONE REGEX CALL *** - Matches() captures ALL elements at this level in a single regex execution
+            // No loops calling Match() repeatedly - all matches are obtained at once
+            var matches = UnifiedPattern().Matches(html);
             
-            while (stack.Count > 0)
-            {
-                var context = stack.Pop();
-                var currentPos = context.CurrentPos;
-                
-                while (currentPos < context.Html.Length)
-                {
-                    // THE SINGLE REGEX does all the work (now source-generated!)
-                    var match = UnifiedPattern().Match(context.Html, currentPos);
-                    
-                    if (!match.Success || match.Index > currentPos)
-                    {
-                        // Gap before match - treat as text
-                        if (match.Success && match.Index > currentPos)
-                        {
-                            var textContent = context.Html.Substring(currentPos, match.Index - currentPos);
-                            AddTextNode(document, context.Parent, textContent, context.BasePosition + currentPos);
-                            currentPos = match.Index;
-                            continue;
-                        }
-                        break;
-                    }
+            if (matches.Count == 0)
+                return;
 
-                    if (match.Groups["doctype"].Success)
+            // Queue to process nested content - each will get ONE regex call
+            var queue = new Queue<MatchInfo>();
+            
+            int lastPosition = 0;
+            
+            foreach (Match match in matches)
+            {
+                // Handle text gaps before match
+                if (match.Index > lastPosition)
+                {
+                    var textContent = html.Substring(lastPosition, match.Index - lastPosition);
+                    AddTextNode(document, parent, textContent, basePosition + lastPosition);
+                }
+
+                if (match.Groups["doctype"].Success)
+                {
+                    var node = document.CreateNode(HtmlNodeType.Comment, basePosition + match.Index);
+                    SetNodePositions(node, basePosition + match.Index, match.Length);
+                    parent.AppendChild(node);
+                }
+                else if (match.Groups["comment"].Success)
+                {
+                    var node = document.CreateNode(HtmlNodeType.Comment, basePosition + match.Index);
+                    SetNodePositions(node, basePosition + match.Index, match.Length);
+                    parent.AppendChild(node);
+                }
+                else if (match.Groups["selfclose"].Success)
+                {
+                    ProcessSelfCloseTag(document, parent, match, basePosition);
+                }
+                else if (match.Groups["voidelem"].Success)
+                {
+                    ProcessVoidElement(document, parent, match, basePosition);
+                }
+                else if (match.Groups["rawtext"].Success)
+                {
+                    ProcessRawTextElement(document, parent, match, basePosition);
+                }
+                else if (match.Groups["implicit_p"].Success)
+                {
+                    var node = ProcessImplicitElementIterative(document, parent, match, basePosition, "ipname", "ipattrs", "ipcontent");
+                    var innerContent = match.Groups["ipcontent"].Value;
+                    if (!string.IsNullOrEmpty(innerContent))
                     {
-                        var node = document.CreateNode(HtmlNodeType.Comment, context.BasePosition + match.Index);
-                        SetNodePositions(node, context.BasePosition + match.Index, match.Length);
-                        context.Parent.AppendChild(node);
-                        currentPos = match.Index + match.Length;
+                        queue.Enqueue(new MatchInfo(match, node, basePosition + match.Groups["ipcontent"].Index));
                     }
-                    else if (match.Groups["comment"].Success)
+                }
+                else if (match.Groups["implicit_li"].Success)
+                {
+                    var node = ProcessImplicitElementIterative(document, parent, match, basePosition, "ilname", "ilattrs", "ilcontent");
+                    var innerContent = match.Groups["ilcontent"].Value;
+                    if (!string.IsNullOrEmpty(innerContent))
                     {
-                        var node = document.CreateNode(HtmlNodeType.Comment, context.BasePosition + match.Index);
-                        SetNodePositions(node, context.BasePosition + match.Index, match.Length);
-                        context.Parent.AppendChild(node);
-                        currentPos = match.Index + match.Length;
+                        queue.Enqueue(new MatchInfo(match, node, basePosition + match.Groups["ilcontent"].Index));
                     }
-                    else if (match.Groups["selfclose"].Success)
+                }
+                else if (match.Groups["implicit_dt"].Success)
+                {
+                    var node = ProcessImplicitElementIterative(document, parent, match, basePosition, "idtname", "idtattrs", "idtcontent");
+                    var innerContent = match.Groups["idtcontent"].Value;
+                    if (!string.IsNullOrEmpty(innerContent))
                     {
-                        ProcessSelfCloseTag(document, context.Parent, match, context.BasePosition);
-                        currentPos = match.Index + match.Length;
+                        queue.Enqueue(new MatchInfo(match, node, basePosition + match.Groups["idtcontent"].Index));
                     }
-                    else if (match.Groups["voidelem"].Success)
+                }
+                else if (match.Groups["balanced"].Success)
+                {
+                    var node = ProcessBalancedElementIterative(document, parent, match, basePosition);
+                    var innerContent = match.Groups["content"].Value;
+                    if (!string.IsNullOrEmpty(innerContent))
                     {
-                        ProcessVoidElement(document, context.Parent, match, context.BasePosition);
-                        currentPos = match.Index + match.Length;
+                        var openTagLength = match.Groups["opentag"].Length;
+                        var innerStart = match.Index + openTagLength;
+                        queue.Enqueue(new MatchInfo(match, node, basePosition + innerStart));
                     }
-                    else if (match.Groups["rawtext"].Success)
-                    {
-                        // RAW TEXT ELEMENTS - script, style, textarea
-                        // Content is preserved as-is, not parsed as HTML
-                        ProcessRawTextElement(document, context.Parent, match, context.BasePosition);
-                        currentPos = match.Index + match.Length;
-                    }
-                    else if (match.Groups["implicit_p"].Success)
-                    {
-                        // IMPLICIT CLOSE - <p> tags
-                        var node = ProcessImplicitElementIterative(document, context.Parent, match, context.BasePosition, "ipname", "ipattrs", "ipcontent");
-                        var innerContent = match.Groups["ipcontent"].Value;
-                        if (!string.IsNullOrEmpty(innerContent))
-                        {
-                            // Save current context to continue after processing inner content
-                            context.CurrentPos = match.Index + match.Length;
-                            stack.Push(context);
-                            // Push new context for inner content
-                            stack.Push(new ParseContext(node, innerContent, context.BasePosition + match.Groups["ipcontent"].Index, 0));
-                            break;
-                        }
-                        currentPos = match.Index + match.Length;
-                    }
-                    else if (match.Groups["implicit_li"].Success)
-                    {
-                        // IMPLICIT CLOSE - <li> tags
-                        var node = ProcessImplicitElementIterative(document, context.Parent, match, context.BasePosition, "ilname", "ilattrs", "ilcontent");
-                        var innerContent = match.Groups["ilcontent"].Value;
-                        if (!string.IsNullOrEmpty(innerContent))
-                        {
-                            // Save current context to continue after processing inner content
-                            context.CurrentPos = match.Index + match.Length;
-                            stack.Push(context);
-                            // Push new context for inner content
-                            stack.Push(new ParseContext(node, innerContent, context.BasePosition + match.Groups["ilcontent"].Index, 0));
-                            break;
-                        }
-                        currentPos = match.Index + match.Length;
-                    }
-                    else if (match.Groups["implicit_dt"].Success)
-                    {
-                        // IMPLICIT CLOSE - <dt>/<dd> tags
-                        var node = ProcessImplicitElementIterative(document, context.Parent, match, context.BasePosition, "idtname", "idtattrs", "idtcontent");
-                        var innerContent = match.Groups["idtcontent"].Value;
-                        if (!string.IsNullOrEmpty(innerContent))
-                        {
-                            // Save current context to continue after processing inner content
-                            context.CurrentPos = match.Index + match.Length;
-                            stack.Push(context);
-                            // Push new context for inner content
-                            stack.Push(new ParseContext(node, innerContent, context.BasePosition + match.Groups["idtcontent"].Index, 0));
-                            break;
-                        }
-                        currentPos = match.Index + match.Length;
-                    }
-                    else if (match.Groups["balanced"].Success)
-                    {
-                        var node = ProcessBalancedElementIterative(document, context.Parent, match, context.BasePosition);
-                        var innerContent = match.Groups["content"].Value;
-                        if (!string.IsNullOrEmpty(innerContent))
-                        {
-                            var openTagLength = match.Groups["opentag"].Length;
-                            var innerStart = match.Index + openTagLength;
-                            // Save current context to continue after processing inner content
-                            context.CurrentPos = match.Index + match.Length;
-                            stack.Push(context);
-                            // Push new context for inner content
-                            stack.Push(new ParseContext(node, innerContent, context.BasePosition + innerStart, 0));
-                            break;
-                        }
-                        currentPos = match.Index + match.Length;
-                    }
-                    else if (match.Groups["text"].Success)
-                    {
-                        AddTextNode(document, context.Parent, match.Value, context.BasePosition + match.Index);
-                        currentPos = match.Index + match.Length;
-                    }
-                    else if (match.Groups["orphanclose"].Success)
-                    {
-                        // Orphan close tag - skip it
-                        currentPos = match.Index + match.Length;
-                    }
-                    else
-                    {
-                        currentPos = match.Index + match.Length;
-                    }
+                }
+                else if (match.Groups["text"].Success)
+                {
+                    AddTextNode(document, parent, match.Value, basePosition + match.Index);
+                }
+                else if (match.Groups["orphanclose"].Success)
+                {
+                    // Orphan close tag - skip it
+                }
+
+                lastPosition = match.Index + match.Length;
+            }
+            
+            // Process nested content - ONE regex call per level
+            while (queue.Count > 0)
+            {
+                var info = queue.Dequeue();
+                
+                if (info.Match.Groups["implicit_p"].Success)
+                {
+                    var innerContent = info.Match.Groups["ipcontent"].Value;
+                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
+                }
+                else if (info.Match.Groups["implicit_li"].Success)
+                {
+                    var innerContent = info.Match.Groups["ilcontent"].Value;
+                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
+                }
+                else if (info.Match.Groups["implicit_dt"].Success)
+                {
+                    var innerContent = info.Match.Groups["idtcontent"].Value;
+                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
+                }
+                else if (info.Match.Groups["balanced"].Success)
+                {
+                    var innerContent = info.Match.Groups["content"].Value;
+                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
                 }
             }
         }
