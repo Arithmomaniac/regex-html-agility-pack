@@ -187,7 +187,79 @@ namespace HtmlAgilityPack.RegexParser
         ", RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase)]
         private static partial Regex UnifiedPattern();
 
+        /// <summary>
+        /// Tag-only regex that matches ALL tags without consuming content.
+        /// This allows ONE regex call to find tags at ALL nesting levels.
+        /// </summary>
+        [GeneratedRegex($@"
+            # ====== DOCTYPE ======
+            (?<doctype><!DOCTYPE[^>]*>)
+            |
+            # ====== COMMENTS ======
+            (?<comment><!--.*?-->)
+            |
+            # ====== SELF-CLOSING SYNTAX (explicit />) ======
+            (?<selfclose>
+                <(?<scname>[a-zA-Z][a-zA-Z0-9:-]*)
+                (?<scattrs>{AttributeSection})
+                \s*/\s*>
+            )
+            |
+            # ====== VOID ELEMENTS (no closing tag needed) ======
+            (?<voidelem>
+                <(?<vename>{VoidElements})
+                (?<veattrs>{AttributeSection})
+                \s*/?\s*>
+            )
+            |
+            # ====== RAW TEXT ELEMENTS (script, style, textarea) ======
+            (?<rawtext>
+                <(?<rtname>{RawTextElements})
+                (?<rtattrs>{AttributeSection})
+                \s*>
+                (?<rtcontent>.*?)
+                </\k<rtname>\s*>
+            )
+            |
+            # ====== OPENING TAGS (any element) ======
+            (?<opentag>
+                <(?<openname>[a-zA-Z][a-zA-Z0-9:-]*)
+                (?<openattrs>{AttributeSection})
+                \s*>
+            )
+            |
+            # ====== CLOSING TAGS ======
+            (?<closetag>
+                </(?<closename>[a-zA-Z][a-zA-Z0-9:-]*)\s*>
+            )
+            |
+            # ====== TEXT CONTENT ======
+            (?<text>[^<]+)
+        ", RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+        private static partial Regex TagPattern();
+
         #endregion
+
+        /// <summary>
+        /// Element information for building tree from positions.
+        /// </summary>
+        private class ElementInfo
+        {
+            public string TagName;
+            public HtmlNode Node;
+            public int OpenTagStart;
+            public int OpenTagEnd;
+            public int ContentStart;
+            
+            public ElementInfo(string tagName, HtmlNode node, int openTagStart, int openTagEnd)
+            {
+                TagName = tagName;
+                Node = node;
+                OpenTagStart = openTagStart;
+                OpenTagEnd = openTagEnd;
+                ContentStart = openTagEnd;
+            }
+        }
 
         /// <summary>
         /// Represents a match with its parent context for building the tree.
@@ -226,8 +298,9 @@ namespace HtmlAgilityPack.RegexParser
             docNode._innerlength = html.Length;
             docNode._outerlength = html.Length;
 
-            // ONE regex call captures everything
-            BuildTreeFromMatches(document, docNode, html, 0);
+            // *** SINGLE REGEX CALL ON ENTIRE DOCUMENT ***
+            // Finds ALL tags at ALL nesting levels in one pass
+            ParseSinglePass(document, docNode, html);
             
             // Register IDs if tracking is enabled
             if (document.OptionUseIdAttribute && document.Nodesid != null)
@@ -236,130 +309,203 @@ namespace HtmlAgilityPack.RegexParser
             }
         }
 
-        private void BuildTreeFromMatches(HtmlDocument document, HtmlNode parent, string html, int basePosition)
+        private void ParseSinglePass(HtmlDocument document, HtmlNode docNode, string html)
         {
-            // *** ONE REGEX CALL *** - Matches() captures ALL elements at this level in a single regex execution
-            // No loops calling Match() repeatedly - all matches are obtained at once
-            var matches = UnifiedPattern().Matches(html);
+            // *** ONE REGEX CALL *** - Get ALL matches in entire document
+            var matches = TagPattern().Matches(html);
             
             if (matches.Count == 0)
                 return;
 
-            // Queue to process nested content - each will get ONE regex call
-            var queue = new Queue<MatchInfo>();
+            // Stack to track open elements and build tree structure
+            var elementStack = new Stack<ElementInfo>();
+            elementStack.Push(new ElementInfo("", docNode, 0, 0));
             
             int lastPosition = 0;
             
             foreach (Match match in matches)
             {
+                var currentParent = elementStack.Peek();
+                
                 // Handle text gaps before match
                 if (match.Index > lastPosition)
                 {
                     var textContent = html.Substring(lastPosition, match.Index - lastPosition);
-                    AddTextNode(document, parent, textContent, basePosition + lastPosition);
+                    if (!string.IsNullOrWhiteSpace(textContent) || textContent.Length > 0)
+                    {
+                        AddTextNode(document, currentParent.Node, textContent, lastPosition);
+                    }
                 }
 
                 if (match.Groups["doctype"].Success)
                 {
-                    var node = document.CreateNode(HtmlNodeType.Comment, basePosition + match.Index);
-                    SetNodePositions(node, basePosition + match.Index, match.Length);
-                    parent.AppendChild(node);
+                    var node = document.CreateNode(HtmlNodeType.Comment, match.Index);
+                    SetNodePositions(node, match.Index, match.Length);
+                    currentParent.Node.AppendChild(node);
                 }
                 else if (match.Groups["comment"].Success)
                 {
-                    var node = document.CreateNode(HtmlNodeType.Comment, basePosition + match.Index);
-                    SetNodePositions(node, basePosition + match.Index, match.Length);
-                    parent.AppendChild(node);
+                    var node = document.CreateNode(HtmlNodeType.Comment, match.Index);
+                    SetNodePositions(node, match.Index, match.Length);
+                    currentParent.Node.AppendChild(node);
                 }
                 else if (match.Groups["selfclose"].Success)
                 {
-                    ProcessSelfCloseTag(document, parent, match, basePosition);
+                    ProcessSelfCloseTag(document, currentParent.Node, match, 0);
                 }
                 else if (match.Groups["voidelem"].Success)
                 {
-                    ProcessVoidElement(document, parent, match, basePosition);
+                    ProcessVoidElement(document, currentParent.Node, match, 0);
                 }
                 else if (match.Groups["rawtext"].Success)
                 {
-                    ProcessRawTextElement(document, parent, match, basePosition);
+                    ProcessRawTextElement(document, currentParent.Node, match, 0);
                 }
-                else if (match.Groups["implicit_p"].Success)
+                else if (match.Groups["opentag"].Success)
                 {
-                    var node = ProcessImplicitElementIterative(document, parent, match, basePosition, "ipname", "ipattrs", "ipcontent");
-                    var innerContent = match.Groups["ipcontent"].Value;
-                    if (!string.IsNullOrEmpty(innerContent))
+                    // Opening tag - create element and push to stack
+                    var tagName = match.Groups["openname"].Value.ToLowerInvariant();
+                    
+                    // Check for implicit closing
+                    if (IsImplicitCloseTag(tagName, elementStack))
                     {
-                        queue.Enqueue(new MatchInfo(match, node, basePosition + match.Groups["ipcontent"].Index));
+                        // Close implicitly closed elements
+                        while (elementStack.Count > 1 && ShouldImplicitlyClose(elementStack.Peek().TagName, tagName))
+                        {
+                            var closedElem = elementStack.Pop();
+                            FinalizeElement(document, html, closedElem, match.Index);
+                        }
                     }
-                }
-                else if (match.Groups["implicit_li"].Success)
-                {
-                    var node = ProcessImplicitElementIterative(document, parent, match, basePosition, "ilname", "ilattrs", "ilcontent");
-                    var innerContent = match.Groups["ilcontent"].Value;
-                    if (!string.IsNullOrEmpty(innerContent))
+                    
+                    var node = document.CreateNode(HtmlNodeType.Element, match.Index);
+                    node.SetName(tagName);
+                    SetNodePositions(node, match.Index, match.Length);
+                    
+                    // Parse attributes - need to create a sub-match for attribute parsing
+                    var attrMatch = CreateAttributeMatch(match, "openattrs");
+                    if (attrMatch != null)
                     {
-                        queue.Enqueue(new MatchInfo(match, node, basePosition + match.Groups["ilcontent"].Index));
+                        ParseAttributesFromMatch(document, node, attrMatch);
                     }
+                    
+                    currentParent.Node.AppendChild(node);
+                    
+                    // Push to stack
+                    elementStack.Push(new ElementInfo(tagName, node, match.Index, match.Index + match.Length));
                 }
-                else if (match.Groups["implicit_dt"].Success)
+                else if (match.Groups["closetag"].Success)
                 {
-                    var node = ProcessImplicitElementIterative(document, parent, match, basePosition, "idtname", "idtattrs", "idtcontent");
-                    var innerContent = match.Groups["idtcontent"].Value;
-                    if (!string.IsNullOrEmpty(innerContent))
+                    // Closing tag - pop from stack and finalize
+                    var closeTagName = match.Groups["closename"].Value.ToLowerInvariant();
+                    
+                    // Find matching open tag
+                    while (elementStack.Count > 1)
                     {
-                        queue.Enqueue(new MatchInfo(match, node, basePosition + match.Groups["idtcontent"].Index));
-                    }
-                }
-                else if (match.Groups["balanced"].Success)
-                {
-                    var node = ProcessBalancedElementIterative(document, parent, match, basePosition);
-                    var innerContent = match.Groups["content"].Value;
-                    if (!string.IsNullOrEmpty(innerContent))
-                    {
-                        var openTagLength = match.Groups["opentag"].Length;
-                        var innerStart = match.Index + openTagLength;
-                        queue.Enqueue(new MatchInfo(match, node, basePosition + innerStart));
+                        var elem = elementStack.Peek();
+                        if (elem.TagName == closeTagName)
+                        {
+                            elementStack.Pop();
+                            FinalizeElement(document, html, elem, match.Index, match.Index + match.Length, closeTagName);
+                            break;
+                        }
+                        else if (elem.TagName == "")
+                        {
+                            // Orphan close tag
+                            break;
+                        }
+                        else
+                        {
+                            // Mismatched - implicit close
+                            elementStack.Pop();
+                            FinalizeElement(document, html, elem, match.Index);
+                        }
                     }
                 }
                 else if (match.Groups["text"].Success)
                 {
-                    AddTextNode(document, parent, match.Value, basePosition + match.Index);
-                }
-                else if (match.Groups["orphanclose"].Success)
-                {
-                    // Orphan close tag - skip it
+                    AddTextNode(document, currentParent.Node, match.Value, match.Index);
                 }
 
                 lastPosition = match.Index + match.Length;
             }
             
-            // Process nested content - ONE regex call per level
-            while (queue.Count > 0)
+            // Close any remaining open elements
+            while (elementStack.Count > 1)
             {
-                var info = queue.Dequeue();
-                
-                if (info.Match.Groups["implicit_p"].Success)
-                {
-                    var innerContent = info.Match.Groups["ipcontent"].Value;
-                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
-                }
-                else if (info.Match.Groups["implicit_li"].Success)
-                {
-                    var innerContent = info.Match.Groups["ilcontent"].Value;
-                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
-                }
-                else if (info.Match.Groups["implicit_dt"].Success)
-                {
-                    var innerContent = info.Match.Groups["idtcontent"].Value;
-                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
-                }
-                else if (info.Match.Groups["balanced"].Success)
-                {
-                    var innerContent = info.Match.Groups["content"].Value;
-                    BuildTreeFromMatches(document, info.Parent, innerContent, info.BasePosition);
-                }
+                var elem = elementStack.Pop();
+                FinalizeElement(document, html, elem, html.Length);
             }
         }
+
+        private bool IsImplicitCloseTag(string tagName, Stack<ElementInfo> stack)
+        {
+            // Tags that can implicitly close: p, li, dt, dd, etc.
+            return tagName == "p" || tagName == "li" || tagName == "dt" || tagName == "dd" ||
+                   tagName == "option" || tagName == "optgroup" || tagName == "tr" || 
+                   tagName == "td" || tagName == "th";
+        }
+
+        private bool ShouldImplicitlyClose(string openTag, string newTag)
+        {
+            // Simplified implicit closing rules
+            if (openTag == "p" && (newTag == "p" || IsBlockElement(newTag)))
+                return true;
+            if (openTag == "li" && newTag == "li")
+                return true;
+            if ((openTag == "dt" || openTag == "dd") && (newTag == "dt" || newTag == "dd"))
+                return true;
+            return false;
+        }
+
+        private bool IsBlockElement(string tagName)
+        {
+            return tagName == "div" || tagName == "p" || tagName == "h1" || tagName == "h2" || 
+                   tagName == "h3" || tagName == "h4" || tagName == "h5" || tagName == "h6" ||
+                   tagName == "ul" || tagName == "ol" || tagName == "li" || tagName == "dl" ||
+                   tagName == "dt" || tagName == "dd" || tagName == "table" || tagName == "form" ||
+                   tagName == "blockquote" || tagName == "pre" || tagName == "address";
+        }
+
+        private void FinalizeElement(HtmlDocument document, string html, ElementInfo elem, int contentEnd, int closeTagEnd = -1, string closeTagName = null)
+        {
+            // Set inner content positions
+            var contentStart = elem.ContentStart;
+            var contentLength = contentEnd - contentStart;
+            
+            elem.Node._innerstartindex = contentStart;
+            elem.Node._innerlength = contentLength;
+            
+            // Set outer length
+            if (closeTagEnd > 0)
+            {
+                elem.Node._outerlength = closeTagEnd - elem.OpenTagStart;
+                
+                // Create end node
+                elem.Node._endnode = document.CreateNode(HtmlNodeType.Element, contentEnd);
+                elem.Node._endnode.SetName(closeTagName ?? elem.TagName);
+                elem.Node._endnode._outerstartindex = contentEnd;
+                elem.Node._endnode._outerlength = closeTagEnd - contentEnd;
+            }
+            else
+            {
+                // Implicitly closed or no close tag
+                elem.Node._outerlength = contentEnd - elem.OpenTagStart;
+                elem.Node._endnode = elem.Node;
+            }
+        }
+
+        private Match? CreateAttributeMatch(Match originalMatch, string attrGroupName)
+        {
+            // Helper to extract attribute section for parsing
+            var attrGroup = originalMatch.Groups[attrGroupName];
+            if (attrGroup.Success && !string.IsNullOrEmpty(attrGroup.Value))
+            {
+                // The original match already has attribute captures we can use
+                return originalMatch;
+            }
+            return null;
+        }
+
 
         private void ProcessSelfCloseTag(HtmlDocument document, HtmlNode parent, Match match, int basePosition)
         {
